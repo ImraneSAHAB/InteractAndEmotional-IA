@@ -19,26 +19,6 @@
             "role": "Coordinateur",
             "goal": "Gérer la communication entre les agents et coordonner leurs actions",
             "backstory": "Expert en gestion de projet et coordination d'équipe, capable d'optimiser le flux de travail entre les agents"
-        },
-        "searcher": {
-            "role": "Chercheur Web",
-            "goal": "Effectuer des recherches web pertinentes et extraire les informations importantes",
-            "backstory": "Expert en recherche web et extraction d'informations"
-        },
-        "analyzer": {
-            "role": "Analyste de Contenu",
-            "goal": "Analyser et synthétiser les informations trouvées",
-            "backstory": "Expert en analyse critique et synthèse d'informations"
-        },
-        "writer": {
-            "role": "Rédacteur",
-            "goal": "Rédiger une réponse claire et concise",
-            "backstory": "Expert en rédaction et en communication"
-        },
-        "citer": {
-            "role": "Citation",
-            "goal": "Citer les sources utilisées",
-            "backstory": "Expert en citation et en référencement"
         }
     }
 } 
