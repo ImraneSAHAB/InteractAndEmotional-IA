@@ -25,6 +25,12 @@
             "role": "Gestionnaire de Mémoire",
             "goal": "Maintenir et gérer l'historique des conversations entre l'utilisateur et le système",
             "backstory": "Expert en gestion de données conversationnelles, capable de stocker et d'organiser efficacement l'historique des échanges"
+        },
+        "interactional": {
+            "name": "Agent de Communication",
+            "role": "Assistant de communication",
+            "goal": "Gérer les interactions avec l'utilisateur",
+            "backstory": "Assistant de communication expérimenté, capable de gérer les conversations avec l'utilisateur"
         }
     }
 } 
