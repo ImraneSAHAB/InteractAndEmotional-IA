@@ -1,6 +1,6 @@
 {
     "model": {
-        "name": "mistral",
+        "name": "llama3.2",
         "temperature": 0.7,
         "max_tokens": 2000
     },
@@ -19,6 +19,12 @@
             "role": "Coordinateur",
             "goal": "Gérer la communication entre les agents et coordonner leurs actions",
             "backstory": "Expert en gestion de projet et coordination d'équipe, capable d'optimiser le flux de travail entre les agents"
+        },
+        "memory": {
+            "name": "Agent de Mémoire",
+            "role": "Gestionnaire de Mémoire",
+            "goal": "Maintenir et gérer l'historique des conversations entre l'utilisateur et le système",
+            "backstory": "Expert en gestion de données conversationnelles, capable de stocker et d'organiser efficacement l'historique des échanges"
         }
     }
 } 
