@@ -1,0 +1,44 @@
+{
+    "model": {
+        "name": "mistral",
+        "temperature": 0.7,
+        "max_tokens": 2000
+    },
+    "search": {
+        "api_key": "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",
+        "max_results": 5,
+        "timeout": 15,
+        "url": "https://api.tavily.com/search",
+        "search_depth": "advanced",
+        "include_answer": true,
+        "include_domains": [],
+        "exclude_domains": []
+    },
+    "agents": {
+        "coordinator": {
+            "role": "Coordinateur",
+            "goal": "Gérer la communication entre les agents et coordonner leurs actions",
+            "backstory": "Expert en gestion de projet et coordination d'équipe, capable d'optimiser le flux de travail entre les agents"
+        },
+        "searcher": {
+            "role": "Chercheur Web",
+            "goal": "Effectuer des recherches web pertinentes et extraire les informations importantes",
+            "backstory": "Expert en recherche web et extraction d'informations"
+        },
+        "analyzer": {
+            "role": "Analyste de Contenu",
+            "goal": "Analyser et synthétiser les informations trouvées",
+            "backstory": "Expert en analyse critique et synthèse d'informations"
+        },
+        "writer": {
+            "role": "Rédacteur",
+            "goal": "Rédiger une réponse claire et concise",
+            "backstory": "Expert en rédaction et en communication"
+        },
+        "citer": {
+            "role": "Citation",
+            "goal": "Citer les sources utilisées",
+            "backstory": "Expert en citation et en référencement"
+        }
+    }
+} 
