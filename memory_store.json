@@ -1,0 +1,19 @@
+{
+    "context": {
+        "location": "",
+        "name": "",
+        "preferences": [],
+        "interests": [],
+        "current_topic": ""
+    },
+    "messages": [
+        {
+            "role": "user",
+            "content": "Salut !"
+        },
+        {
+            "role": "assistant",
+            "content": "Bonjour ! Je suis votre assistant touristique. Comment puis-je vous aider aujourd'hui ?"
+        }
+    ]
+}
