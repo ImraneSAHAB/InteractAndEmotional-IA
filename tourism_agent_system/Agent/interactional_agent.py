@@ -1,5 +1,6 @@
 from Agent import Agent
 from memory_agent import MemoryAgent
+from emotion_detection_agent import EmotionDetectionAgent
 import ollama
 from typing import Optional
 import sys
@@ -19,6 +20,8 @@ class InteractionalAgent(Agent):
         super().__init__(name)
         self._llm = ollama.Client()
         self._memory_agent = MemoryAgent()
+        self._emotion_agent = EmotionDetectionAgent()
+
         
     def _print_typing_effect(self, text: str, delay: float = 0.02) -> None:
         """
@@ -46,6 +49,9 @@ class InteractionalAgent(Agent):
         try:
             # Stocke le message de l'utilisateur
             self._memory_agent.add_message("user", prompt)
+            
+            # Détection de l’émotion dans le message
+            emotion = self._emotion_agent.run(prompt)
             
             # Récupère l'historique des messages pour le contexte
             context = self._memory_agent.get_messages()
