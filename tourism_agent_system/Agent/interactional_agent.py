@@ -1,101 +1,69 @@
 from Agent import Agent
-from memory_agent import MemoryAgent
-import ollama
-from typing import Optional
-import sys
-import os
-import time
-
-# Ajouter le répertoire parent au chemin Python
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database.fill_db import update_database
+from orchestrator import AgentOrchestrator
+from typing import Dict, Any
 
 class InteractionalAgent(Agent):
     """
-    Agent qui gère les interactions avec l'utilisateur via un LLM.
+    Agent qui gère les interactions avec l'utilisateur
     """
     
     def __init__(self, name: str = "interactional"):
         super().__init__(name)
-        self._llm = ollama.Client()
-        self._memory_agent = MemoryAgent()
+        # Initialiser l'orchestrateur
+        self._orchestrator = AgentOrchestrator()
         
-    def _print_typing_effect(self, text: str, delay: float = 0.02) -> None:
+    def run(self) -> None:
         """
-        Affiche le texte caractère par caractère avec un effet de dactylographie.
-        
-        Args:
-            text (str): Le texte à afficher
-            delay (float): Le délai entre chaque caractère en secondes
+        Lance la boucle principale d'interaction avec l'utilisateur.
         """
-        for char in text:
-            print(char, end='', flush=True)
-            time.sleep(delay)
-        print()  # Nouvelle ligne à la fin
+        print("Bienvenue !")
+        print("(Pour quitter, appuyez sur 'Entrée')")
         
-    def run(self, prompt: str) -> str:
+        while True:
+            try:
+                # Obtenir l'entrée utilisateur
+                user_input = input("\nVous: ").strip()
+                
+                # Vérifier si l'utilisateur veut quitter
+                if user_input.lower() in [""]:
+                    print("\nAu revoir ! À bientôt !")
+                    break
+                
+                # Ignorer les messages vides
+                if not user_input:
+                    continue
+                
+                # Traiter le message via l'orchestrateur
+                result = self._orchestrator.process_message(user_input)
+                
+                # Afficher la réponse
+                if result["success"]:
+                    print(f"\nAssistant: {result['response']}")
+                else:
+                    print(f"\nDésolé, une erreur est survenue: {result.get('error', 'Erreur inconnue')}")
+                    
+            except KeyboardInterrupt:
+                print("\n\nAu revoir ! À bientôt !")
+                break
+            except Exception as e:
+                print(f"\nUne erreur inattendue est survenue: {e}")
+                print("N'hésitez pas à réessayer.")
+        
+    def get_conversation_history(self) -> list:
         """
-        Traite le message de l'utilisateur et génère une réponse via le LLM.
+        Récupère l'historique des conversations depuis l'orchestrateur.
         
-        Args:
-            prompt (str): Le message de l'utilisateur
-            
         Returns:
-            str: La réponse générée par le LLM
+            list: Liste des messages
         """
-        try:
-            # Stocke le message de l'utilisateur
-            self._memory_agent.add_message("user", prompt)
-            
-            # Récupère l'historique des messages pour le contexte
-            context = self._memory_agent.get_messages()
-            
-            # Génère une réponse avec le LLM
-            response = self._llm.chat(
-                model="gemma3",
-                messages=[
-                    {"role": "system", "content": "Vous êtes un assistant touristique. Répondez aux questions de manière précise et utile."},
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            
-            # Récupère la réponse
-            response_text = response["message"]["content"]
-            
-            # Stocke la réponse
-            self._memory_agent.add_message("assistant", response_text)
-            
-            # Met à jour la base de données après l'interaction complète
-            update_database()
-            
-            # Affiche la réponse avec l'effet de dactylographie
-            self._print_typing_effect(response_text)
-            
-            return response_text
-        except Exception as e:
-            print(f"Erreur lors de l'interaction: {e}")
-            return "Désolé, une erreur est survenue lors du traitement de votre message."
+        return self._orchestrator.get_conversation_history()
+        
+    def clear_memory(self) -> None:
+        """
+        Efface la mémoire via l'orchestrateur.
+        """
+        self._orchestrator.clear_memory()
 
 if __name__ == "__main__":
-    # Créer une instance de l'agent
     agent = InteractionalAgent()
-    
-    print("Bienvenue !")
-    print("Tapez 'Entrée' pour quitter.")
-    print("-" * 50)
-    
-    while True:
-        # Demander l'entrée de l'utilisateur
-        user_input = input("\nVous: ")
-        
-        # Vérifier si l'utilisateur veut quitter
-        if user_input.lower() == "":
-            print("\nAu revoir!")
-            break
-            
-        # Traiter la réponse
-        try:
-            response = agent.run(user_input)
-            print("\nAssistant:", response)
-        except Exception as e:
-            print(f"\nErreur: {e}")
+    agent.run()

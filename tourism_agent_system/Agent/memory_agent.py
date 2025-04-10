@@ -1,101 +1,131 @@
 from Agent import Agent
 from typing import List, Dict, Any
-import json
-import os
 import sys
+import os
+import chromadb
+from datetime import datetime
 
 # Ajouter le répertoire parent au chemin Python
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database.fill_db import update_database
 
 class MemoryAgent(Agent):
-    
     """
     Agent qui gère la mémoire des messages avec le chat.
     """
     
     def __init__(self, name: str = "memory"):
         super().__init__(name)
-        # Créer le dossier memory s'il n'existe pas
-        self._memory_dir = "memory"
-        if not os.path.exists(self._memory_dir):
-            os.makedirs(self._memory_dir)
-        self._memory_file = os.path.join(self._memory_dir, "memory_store.json")
-        self._messages: List[Dict[str, Any]] = self._load_messages()
+        # Initialiser ChromaDB
+        self._chroma_client = chromadb.PersistentClient(path="chroma_db")
+        self._collection = self._chroma_client.get_or_create_collection(
+            name="conversations",
+            metadata={"hnsw:space": "cosine"}
+        )
         
-    def _load_messages(self) -> List[Dict[str, Any]]:
-        """
-        Charge les messages depuis le fichier de stockage.
+        # Initialiser les attributs
+        self._messages = []
+        self._current_conversation = {"user": None, "assistant": None}
+        self._load_messages_from_chromadb()
         
-        Returns:
-            List[Dict[str, Any]]: Liste des messages chargés
-        """
+    def _load_messages_from_chromadb(self) -> None:
+        """Charge les messages depuis ChromaDB."""
         try:
-            if os.path.exists(self._memory_file):
-                with open(self._memory_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    # S'assurer que data est une liste
-                    if isinstance(data, list):
-                        return data
-                    else:
-                        print(f"Le fichier {self._memory_file} n'est pas au bon format. Réinitialisation...")
-                        return []
-            return []
-        except json.JSONDecodeError:
-            print(f"Erreur lors de la lecture du fichier {self._memory_file}")
-            return []
-            
-    def _save_messages(self) -> None:
-        """
-        Sauvegarde les messages dans le fichier de stockage.
-        """
-        try:
-            with open(self._memory_file, "w", encoding="utf-8") as f:
-                json.dump(self._messages, f, ensure_ascii=False, indent=4)
+            results = self._collection.get()
+            if not results or "metadatas" not in results:
+                return
+                
+            for metadata in results["metadatas"]:
+                for role in ["user", "ai"]:
+                    msg_key = f"{role}_message"
+                    if msg_key in metadata:
+                        self._messages.append({
+                            "role": "user" if role == "user" else "assistant",
+                            "content": metadata[msg_key]
+                        })
         except Exception as e:
-            print(f"Erreur lors de la sauvegarde des messages: {e}")
-        
+            print(f"Erreur de chargement ChromaDB: {e}")
+            
     def add_message(self, role: str, content: str) -> None:
         """
-        Ajoute un nouveau message à la mémoire et le sauvegarde.
+        Ajoute un message à la mémoire et gère la conversation.
         
         Args:
-            role (str): Le rôle de l'émetteur du message ('user' ou 'assistant')
+            role (str): Le rôle de l'émetteur (user/assistant)
             content (str): Le contenu du message
         """
-        self._messages.append({
-            "role": role,
-            "content": content
-        })
-        self._save_messages()
-        
+        try:
+            content = str(content).strip()
+            self._messages.append({"role": role, "content": content})
+            
+            if role in ["user", "assistant"]:
+                self._current_conversation[role] = content
+                if role == "assistant" and self._current_conversation["user"]:
+                    self._save_conversation()
+                    self._current_conversation = {"user": None, "assistant": None}
+                    
+        except Exception as e:
+            print(f"Erreur d'ajout de message: {e}")
+            
+    def _save_conversation(self) -> None:
+        """Sauvegarde la conversation complète dans ChromaDB."""
+        try:
+            conv = self._current_conversation
+            if not conv["user"] or not conv["assistant"]:
+                return
+                
+            current_ids = self._collection.get()
+            next_id = len(current_ids.get('ids', [])) + 1 if current_ids.get('ids') else 1
+            
+            self._collection.add(
+                ids=[f"conv_{next_id}"],
+                documents=[f"Utilisateur: {conv['user']}\nAssistant: {conv['assistant']}"],
+                metadatas=[{
+                    "type": "conversation",
+                    "timestamp": datetime.now().isoformat(),
+                    "conversation_id": f"conv_{next_id}",
+                    "user_message": conv["user"],
+                    "ai_message": conv["assistant"],
+                    "agent_name": self._name,
+                    "agent_role": self._role
+                }]
+            )
+        except Exception as e:
+            print(f"Erreur de sauvegarde ChromaDB: {e}")
+            
     def get_messages(self) -> List[Dict[str, Any]]:
         """
-        Récupère l'historique complet des messages.
+        Récupère tous les messages.
         
         Returns:
             List[Dict[str, Any]]: Liste des messages avec leur rôle et contenu
         """
         return self._messages.copy()
-    
-    def clear_memory(self) -> None:
-        """
-        Efface toute la mémoire des messages et le fichier de stockage.
-        """
-        self._messages = []
-        self._save_messages()
         
+    def clear_memory(self) -> None:
+        """Efface la mémoire et réinitialise ChromaDB."""
+        # Réinitialiser les attributs
+        self._messages = []
+        self._current_conversation = {"user": None, "assistant": None}
+        
+        # Réinitialiser ChromaDB
+        try:
+            self._collection.delete()
+            self._collection = self._chroma_client.get_or_create_collection(
+                name="conversations",
+                metadata={"hnsw:space": "cosine"}
+            )
+        except Exception as e:
+            print(f"Erreur de réinitialisation ChromaDB: {e}")
+            
     def run(self, prompt: str) -> str:
         """
-        Méthode principale de l'agent qui traite les messages.
+        Traite un nouveau message.
         
         Args:
             prompt (str): Le message à traiter
             
         Returns:
-            str: Un message de confirmation
+            str: Message de confirmation
         """
-        # Le MemoryAgent n'a pas besoin de traiter le contenu du message
-        # Il se contente de le stocker
         self.add_message("user", prompt)
-        return f"{self.role}: Message enregistré dans la mémoire"
+        return f"{self._name}: Message enregistré"
