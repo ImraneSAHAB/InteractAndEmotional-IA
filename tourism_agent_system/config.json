@@ -30,14 +30,14 @@
         "interactional": {
             "name": "Communication",
             "role": "Assistant de communication",
-            "goal": "Gérer les interactions avec l'utilisateur",
-            "backstory": "Assistant de communication expérimenté, capable de gérer les conversations avec l'utilisateur"
+            "goal": "Gérer les interactions avec l'utilisateur de manière naturelle et efficace",
+            "backstory": "Expert en communication, capable de maintenir des conversations fluides et pertinentes avec l'utilisateur"
         },
-        "emotion_detection": {
-            "name": "Agent de Détection d Émotion",
-            "role": "Analyseur émotionnel",
-            "goal": "Détecter l état émotionnel de l utilisateur à partir de ses messages",
-            "backstory": "Spécialiste de l analyse émotionnelle des textes, il est capable d identifier rapidement l émotion dominante dans les propos de l utilisateur pour aider à personnaliser la réponse du système"
+        "emotion_detector": {
+            "name": "Détecteur d'émotions",
+            "role": "Analyste émotionnel",
+            "goal": "Détecter et analyser les émotions dans les messages des utilisateurs",
+            "backstory": "Spécialiste en analyse émotionnelle, capable d'identifier les nuances émotionnelles dans le langage"
         }
     }
 } 

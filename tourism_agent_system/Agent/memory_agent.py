@@ -24,7 +24,7 @@ class MemoryAgent(Agent):
         
         # Initialiser les attributs
         self._messages = []
-        self._current_conversation = {"user": None, "assistant": None}
+        self._current_conversation = {"user": None, "assistant": None, "emotion": None}
         self._load_messages_from_chromadb()
         
     def _load_messages_from_chromadb(self) -> None:
@@ -45,13 +45,14 @@ class MemoryAgent(Agent):
         except Exception as e:
             print(f"Erreur de chargement ChromaDB: {e}")
             
-    def add_message(self, role: str, content: str) -> None:
+    def add_message(self, role: str, content: str, emotion: str = None) -> None:
         """
         Ajoute un message à la mémoire et gère la conversation.
         
         Args:
             role (str): Le rôle de l'émetteur (user/assistant)
             content (str): Le contenu du message
+            emotion (str, optional): L'émotion détectée dans le message
         """
         try:
             content = str(content).strip()
@@ -59,9 +60,11 @@ class MemoryAgent(Agent):
             
             if role in ["user", "assistant"]:
                 self._current_conversation[role] = content
+                if role == "user" and emotion:
+                    self._current_conversation["emotion"] = emotion
                 if role == "assistant" and self._current_conversation["user"]:
                     self._save_conversation()
-                    self._current_conversation = {"user": None, "assistant": None}
+                    self._current_conversation = {"user": None, "assistant": None, "emotion": None}
                     
         except Exception as e:
             print(f"Erreur d'ajout de message: {e}")
@@ -76,15 +79,19 @@ class MemoryAgent(Agent):
             current_ids = self._collection.get()
             next_id = len(current_ids.get('ids', [])) + 1 if current_ids.get('ids') else 1
             
+            # Créer le document avec l'émotion
+            document_text = f"Utilisateur: {conv['user']}\nAssistant: {conv['assistant']}\nÉmotion: {conv.get('emotion', 'neutre')}"
+            
             self._collection.add(
                 ids=[f"conv_{next_id}"],
-                documents=[f"Utilisateur: {conv['user']}\nAssistant: {conv['assistant']}"],
+                documents=[document_text],
                 metadatas=[{
                     "type": "conversation",
                     "timestamp": datetime.now().isoformat(),
                     "conversation_id": f"conv_{next_id}",
                     "user_message": conv["user"],
                     "ai_message": conv["assistant"],
+                    "emotion": conv.get("emotion", "neutre"),
                     "agent_name": self._name,
                     "agent_role": self._role
                 }]

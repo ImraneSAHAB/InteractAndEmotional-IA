@@ -48,8 +48,11 @@ class InteractionalAgent(Agent):
                 if not user_input:
                     continue
                 
-                # Traiter le message via l'orchestrateur
-                result = self._orchestrator.process_message(user_input)
+                # Détecter l'émotion
+                emotion = self._emotion_agent.run(user_input)
+                
+                # Traiter le message via l'orchestrateur avec l'émotion détectée
+                result = self._orchestrator.process_message(user_input, emotion=emotion)
                 
                 # Afficher la réponse
                 if result["success"]:

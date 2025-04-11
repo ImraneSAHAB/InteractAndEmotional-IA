@@ -1,7 +1,7 @@
 from Agent import Agent
 from memory_agent import MemoryAgent
 import ollama
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 class AgentOrchestrator(Agent):
     """
@@ -16,12 +16,13 @@ class AgentOrchestrator(Agent):
         # Initialiser les agents
         self._memory_agent = MemoryAgent()
         
-    def process_message(self, message: str) -> Dict[str, Any]:
+    def process_message(self, message: str, emotion: Optional[str] = None) -> Dict[str, Any]:
         """
         Traite un message et coordonne les actions des différents agents.
         
         Args:
             message (str): Le message de l'utilisateur
+            emotion (Optional[str]): L'émotion détectée dans le message
             
         Returns:
             Dict[str, Any]: Le résultat du traitement
@@ -30,20 +31,21 @@ class AgentOrchestrator(Agent):
             # 1. Récupérer le contexte historique depuis ChromaDB via MemoryAgent
             conversation_history = self._memory_agent.get_messages()
             
-            # 2. Construire le prompt avec le contexte
-            prompt = self._build_prompt(message, conversation_history)
+            # 2. Construire le prompt avec le contexte et l'émotion
+            prompt = self._build_prompt(message, conversation_history, emotion)
             
             # 3. Générer une réponse avec le LLM
             response = self._get_llm_response(prompt)
             
             # 4. Sauvegarder la conversation dans ChromaDB via MemoryAgent
-            self._memory_agent.add_message("user", message)
+            self._memory_agent.add_message("user", message, emotion)
             self._memory_agent.add_message("assistant", response)
             
             return {
                 "success": True,
                 "response": response,
-                "context": conversation_history
+                "context": conversation_history,
+                "emotion": emotion
             }
             
         except Exception as e:
@@ -54,27 +56,27 @@ class AgentOrchestrator(Agent):
                 "response": "Désolé, une erreur est survenue lors du traitement de votre message."
             }
     
-    def _build_prompt(self, message: str, conversation_history: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    def _build_prompt(self, message: str, conversation_history: List[Dict[str, str]], emotion: Optional[str] = None) -> List[Dict[str, str]]:
         """
-        Construit le prompt pour le LLM en incluant le contexte.
+        Construit le prompt pour le LLM en incluant le contexte et l'émotion.
         
         Args:
             message (str): Le message de l'utilisateur
             conversation_history (List[Dict[str, str]]): L'historique des conversations
+            emotion (Optional[str]): L'émotion détectée dans le message
             
         Returns:
             List[Dict[str, str]]: Le prompt formaté pour le LLM
         """
-        # Commencer avec le message système basé sur le rôle et le but de l'agent
-        prompt = [
-            {
-                "role": "system",
-                "content": f"Vous êtes {self._role}. {self._goal}"
-            }
-        ]
+        # Commencer avec le message système
+        system_message = f"Vous êtes {self._role}. {self._goal}"
+        if emotion:
+            system_message += f"\nL'utilisateur exprime une émotion de {emotion}. Adaptez votre réponse en conséquence."
+            
+        prompt = [{"role": "system", "content": system_message}]
         
         # Ajouter l'historique des conversations récentes (limité aux 5 derniers échanges)
-        for msg in conversation_history[-10:]:  # 5 échanges = 10 messages (user + assistant)
+        for msg in conversation_history[-10:]:
             prompt.append({
                 "role": msg["role"],
                 "content": msg["content"]
