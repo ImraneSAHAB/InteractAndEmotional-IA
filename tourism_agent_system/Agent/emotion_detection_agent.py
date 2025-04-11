@@ -23,7 +23,7 @@ class EmotionDetectionAgent(Agent):
         """
         try:
             response = self._llm.chat(
-                model="gemma3",
+                model="llama3.2",
                 messages=[
                     {
                         "role": "system",
