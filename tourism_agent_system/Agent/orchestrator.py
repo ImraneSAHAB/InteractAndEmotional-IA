@@ -29,27 +29,30 @@ class AgentOrchestrator(Agent):
             Dict[str, Any]: Le résultat du traitement
         """
         try:
-            # 1. Détecter l'émotion dans le message
-            emotion = self._emotion_agent.run(message)
+            # 1. Détecter les émotions dans le message
+            emotions = self._emotion_agent.run(message)
             
             # 2. Récupérer l'historique des conversations
             conversation_history = self._memory_agent.get_messages()
             
-            # 3. Construire le prompt avec le message, l'historique et l'émotion
-            prompt = self._build_prompt(message, conversation_history, emotion)
+            # 3. Construire le prompt avec le message, l'historique et les émotions
+            prompt = self._build_prompt(message, conversation_history, emotions)
             
             # 4. Générer une réponse avec le LLM
             response = self._get_llm_response(prompt)
             
-            # 5. Sauvegarder la conversation avec l'émotion détectée
-            self._memory_agent.add_message("user", message, emotion)
+            # 5. Convertir la liste d'émotions en chaîne pour ChromaDB
+            emotions_str = ", ".join(emotions)
+            
+            # 6. Sauvegarder la conversation avec les émotions détectées
+            self._memory_agent.add_message("user", message, emotions_str)
             self._memory_agent.add_message("assistant", response)
             
             return {
                 "success": True,
                 "response": response,
                 "context": conversation_history,
-                "emotion": emotion
+                "emotions": emotions
             }
             
         except Exception as e:
@@ -60,26 +63,27 @@ class AgentOrchestrator(Agent):
                 "response": "Désolé, une erreur est survenue lors du traitement de votre message."
             }
     
-    def _build_prompt(self, message: str, conversation_history: List[Dict[str, str]], emotion: Optional[str] = None) -> List[Dict[str, str]]:
+    def _build_prompt(self, message: str, conversation_history: List[Dict[str, str]], emotions: List[str]) -> List[Dict[str, str]]:
         """
-        Construit le prompt pour le LLM en incluant le contexte et l'émotion.
+        Construit le prompt pour le LLM.
         
         Args:
             message (str): Le message de l'utilisateur
             conversation_history (List[Dict[str, str]]): L'historique des conversations
-            emotion (Optional[str]): L'émotion détectée dans le message
+            emotions (List[str]): Les émotions détectées dans le message
             
         Returns:
             List[Dict[str, str]]: Le prompt formaté pour le LLM
         """
         # Commencer avec le message système
         system_message = f"Vous êtes {self._role}. {self._goal}"
-        if emotion:
-            system_message += f"\nL'utilisateur exprime une émotion de {emotion}. Adaptez votre réponse en conséquence."
+        if emotions:
+            emotions_str = ", ".join(emotions)
+            system_message += f"\nL'utilisateur exprime les émotions suivantes : {emotions_str}. Adaptez votre réponse en conséquence."
             
         prompt = [{"role": "system", "content": system_message}]
         
-        # Ajouter l'historique des conversations récentes (limité aux 5 derniers échanges)
+        # Ajouter l'historique des conversations récentes
         for msg in conversation_history[-10:]:
             prompt.append({
                 "role": msg["role"],
