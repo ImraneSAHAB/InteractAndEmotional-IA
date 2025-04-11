@@ -1,5 +1,6 @@
 from Agent import Agent
 from memory_agent import MemoryAgent
+from emotion_detection_agent import EmotionDetectionAgent
 import ollama
 from typing import Dict, Any, List, Optional
 
@@ -15,29 +16,32 @@ class AgentOrchestrator(Agent):
         self._model_config = self._config["model"]
         # Initialiser les agents
         self._memory_agent = MemoryAgent()
+        self._emotion_agent = EmotionDetectionAgent()
         
-    def process_message(self, message: str, emotion: Optional[str] = None) -> Dict[str, Any]:
+    def process_message(self, message: str) -> Dict[str, Any]:
         """
         Traite un message et coordonne les actions des différents agents.
         
         Args:
             message (str): Le message de l'utilisateur
-            emotion (Optional[str]): L'émotion détectée dans le message
             
         Returns:
             Dict[str, Any]: Le résultat du traitement
         """
         try:
-            # 1. Récupérer le contexte historique depuis ChromaDB via MemoryAgent
+            # 1. Détecter l'émotion dans le message
+            emotion = self._emotion_agent.run(message)
+            
+            # 2. Récupérer l'historique des conversations
             conversation_history = self._memory_agent.get_messages()
             
-            # 2. Construire le prompt avec le contexte et l'émotion
+            # 3. Construire le prompt avec le message, l'historique et l'émotion
             prompt = self._build_prompt(message, conversation_history, emotion)
             
-            # 3. Générer une réponse avec le LLM
+            # 4. Générer une réponse avec le LLM
             response = self._get_llm_response(prompt)
             
-            # 4. Sauvegarder la conversation dans ChromaDB via MemoryAgent
+            # 5. Sauvegarder la conversation avec l'émotion détectée
             self._memory_agent.add_message("user", message, emotion)
             self._memory_agent.add_message("assistant", response)
             
