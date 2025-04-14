@@ -24,7 +24,11 @@ class EmotionDetectionAgent(Agent):
     def __init__(self, name: str = "emotion_detector"):
         super().__init__(name)
         self._llm = ollama.Client()
-        self._model_config = self._config["model"]
+        self._model_config = {
+            "name": "gemma3",
+            "temperature": 0.5,
+            "max_tokens": 100
+        }
         
     def run(self, message: str) -> List[str]:
         """

@@ -1,7 +1,0 @@
-ollama
-chatbot
-chromadb
-dotenv
-langchain_community
-langchain_text_splitters
-pypdf
