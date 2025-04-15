@@ -10,23 +10,6 @@ DATA_PATH = "data"
 CHROMA_DB_PATH = "chroma_db"
 MEMORY_STORE_FILE = "memory/memory_store.json"
 
-def detect_title(text):
-    # Critères pour détecter un titre
-    title_patterns = [
-        r'^[A-Z\s]{2,}$',  # Texte tout en majuscules (modifié pour accepter 2 caractères minimum)
-        r'^[0-9]+\.[0-9]*\s+[A-Z]',  # Titres numérotés (ex: 1.2 TITRE)
-        r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$',  # Titres en CamelCase
-        r'^[IVX]+\.\s+[A-Z]',  # Titres en chiffres romains
-        r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*:$',  # Titres suivis de deux points
-        r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*\([^)]*\)$',  # Titres avec parenthèses
-    ]
-    
-    text = text.strip()
-    for pattern in title_patterns:
-        if re.match(pattern, text):
-            return True
-    return False
-
 def process_conversations():
     """Traite les conversations du fichier memory_store.json et les prépare pour ChromaDB"""
     if not os.path.exists(MEMORY_STORE_FILE):
@@ -111,15 +94,11 @@ def add_documents_to_db():
     raw_documents = loader.load()
 
     for i, doc in enumerate(raw_documents):
-        lines = doc.page_content.split('\n')
-        titles = [line.strip() for line in lines if detect_title(line)]
-        
         all_documents.append(doc.page_content)
         all_metadatas.append({
             "source": doc.metadata["source"],
             "type": "pdf",
             "page": doc.metadata.get("page", 0),
-            "titles": ", ".join(titles) if titles else "Sans titre",
             "added_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
         all_ids.append(f"pdf_{i}")

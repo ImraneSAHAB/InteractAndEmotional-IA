@@ -38,6 +38,12 @@
             "role": "Analyste émotionnel",
             "goal": "Détecter et analyser les émotions dans les messages des utilisateurs",
             "backstory": "Spécialiste en analyse émotionnelle, capable d'identifier les nuances émotionnelles dans le langage"
+        },
+        "response_generator": {
+            "name": "Générateur de réponses",
+            "role": "Générateur de réponses contextuelles",
+            "goal": "Composer des réponses contextuelles et générer des questions naturelles pour collecter des informations manquantes",
+            "backstory": "Expert en génération de texte, capable de créer des réponses pertinentes et des questions naturelles adaptées au contexte et aux émotions de l'utilisateur"
         }
     }
 } 
