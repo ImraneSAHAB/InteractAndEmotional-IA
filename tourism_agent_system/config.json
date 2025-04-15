@@ -44,6 +44,13 @@
             "role": "Générateur de réponses contextuelles",
             "goal": "Composer des réponses contextuelles et générer des questions naturelles pour collecter des informations manquantes",
             "backstory": "Expert en génération de texte, capable de créer des réponses pertinentes et des questions naturelles adaptées au contexte et aux émotions de l'utilisateur"
+        },
+        "intent_slot_extractor": {
+            "name": "Détecteur d’intention",
+            "role": "Analyste d’intention",
+            "goal": "Identifier l’intention de l’utilisateur et extraire les entités pertinentes",
+            "backstory": "Spécialiste du traitement du langage naturel, capable d’identifier ce que l’utilisateur souhaite réellement faire ou demander, en extrayant les intentions et les entités clés"
         }
+
     }
 } 

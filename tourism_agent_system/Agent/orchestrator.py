@@ -4,6 +4,8 @@ from emotion_detection_agent import EmotionDetectionAgent
 from response_generator_agent import ResponseGeneratorAgent
 import ollama
 from typing import Dict, Any, List, Optional
+from intent_detection_agent import intentDetectionAgent
+
 import re
 
 class AgentOrchestrator(Agent):
@@ -19,6 +21,7 @@ class AgentOrchestrator(Agent):
         # Initialiser les agents
         self._memory_agent = MemoryAgent()
         self._emotion_agent = EmotionDetectionAgent()
+        self._intent_agent = intentDetectionAgent()
         self._response_generator = ResponseGeneratorAgent()
         
     def process_message(self, message: str) -> Dict[str, Any]:
@@ -35,9 +38,19 @@ class AgentOrchestrator(Agent):
             # 1. Détecter les émotions dans le message
             emotions = self._emotion_agent.run(message)
             
-            # 2. Récupérer l'historique des conversations
+            # 2. Détection de l'intention de l'utilisateur 
+            intent_result = self._intent_agent.run(message) 
+            intent = intent_result.get("intent", "unknown")  
+            slots = intent_result.get("slots", {})     
+            
+            # 3. Récupérer l'historique des conversations
             conversation_history = self._memory_agent.get_messages()
             
+            # 4. Construire le prompt avec le message, l'historique et les émotions
+            prompt = self._build_prompt(message, conversation_history, emotions, intent, slots)
+            
+            # 5. Générer une réponse avec le LLM
+            response = self._get_llm_response(prompt)
             # 3. Extraire les informations du message (slots) via le générateur de réponses
             slots = self._response_generator.extract_slots(message)
             
@@ -56,7 +69,7 @@ class AgentOrchestrator(Agent):
             # 6. Convertir la liste d'émotions en chaîne pour ChromaDB
             emotions_str = ", ".join(emotions)
             
-            # 7. Sauvegarder la conversation avec les émotions détectées et les slots
+            # 7. Sauvegarder la conversation avec les émotions détectées
             self._memory_agent.add_message("user", message, emotions_str, slots)
             self._memory_agent.add_message("assistant", response)
             
@@ -65,6 +78,7 @@ class AgentOrchestrator(Agent):
                 "response": response,
                 "context": conversation_history,
                 "emotions": emotions,
+                "intent": intent,
                 "slots": slots
             }
             
@@ -102,40 +116,33 @@ class AgentOrchestrator(Agent):
         """
         return self._response_generator.generate_response(slots)
     
-    def _build_prompt(self, message: str, conversation_history: List[Dict[str, str]], emotions: List[str]) -> List[Dict[str, str]]:
-        """
-        Construit le prompt pour le LLM.
-        
-        Args:
-            message (str): Le message de l'utilisateur
-            conversation_history (List[Dict[str, str]]): L'historique des conversations
-            emotions (List[str]): Les émotions détectées dans le message
-            
-        Returns:
-            List[Dict[str, str]]: Le prompt formaté pour le LLM
-        """
-        # Commencer avec le message système
+    def _build_prompt(self, message: str, conversation_history: List[Dict[str, str]], emotions: List[str], intent: str, slots: Dict[str, str]) -> List[Dict[str, str]]:
         system_message = f"Vous êtes {self._role}. {self._goal}"
+
         if emotions:
-            emotions_str = ", ".join(emotions)
-            system_message += f"\nL'utilisateur exprime les émotions suivantes : {emotions_str}. Adaptez votre réponse en conséquence."
-            
+            system_message += f"\nL'utilisateur exprime les émotions suivantes : {', '.join(emotions)}."
+
+        if intent and intent != "unknown":
+            system_message += f"\nL'intention détectée est : {intent}."
+            if slots:
+                slots_str = ", ".join([f"{k}: {v}" for k, v in slots.items()])
+                system_message += f" Les informations extraites (slots) sont : {slots_str}."
+
         prompt = [{"role": "system", "content": system_message}]
-        
-        # Ajouter l'historique des conversations récentes
+
         for msg in conversation_history[-10:]:
             prompt.append({
                 "role": msg["role"],
                 "content": msg["content"]
             })
-            
-        # Ajouter le message actuel
+
         prompt.append({
             "role": "user",
             "content": message
         })
-        
+
         return prompt
+
     
     def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
         """
