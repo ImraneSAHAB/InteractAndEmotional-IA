@@ -173,7 +173,13 @@ class MemoryAgent(Agent):
         
         # Réinitialiser ChromaDB
         try:
-            self._collection.delete()
+            # Récupérer tous les IDs de la collection
+            results = self._collection.get()
+            if results and "ids" in results and results["ids"]:
+                # Supprimer tous les documents par leurs IDs
+                self._collection.delete(ids=results["ids"])
+            
+            # Recréer la collection
             self._collection = self._chroma_client.get_or_create_collection(
                 name="conversations",
                 metadata={"hnsw:space": "cosine"}
