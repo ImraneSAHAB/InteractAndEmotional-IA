@@ -25,7 +25,7 @@ class MemoryAgent(Agent):
         
         # Initialiser les attributs
         self._messages = []
-        self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None}
+        self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None, "intent": None}
         self._load_messages_from_chromadb()
         
     def _load_messages_from_chromadb(self) -> None:
@@ -51,11 +51,15 @@ class MemoryAgent(Agent):
                             except:
                                 message_data["slots"] = {}
                                 
+                        # Ajouter l'intent si disponible
+                        if "intent" in metadata and metadata["intent"]:
+                            message_data["intent"] = metadata["intent"]
+                                
                         self._messages.append(message_data)
         except Exception as e:
             print(f"Erreur de chargement ChromaDB: {e}")
             
-    def add_message(self, role: str, content: str, emotion: str = None, slots: Dict[str, Any] = None) -> None:
+    def add_message(self, role: str, content: str, emotion: str = None, slots: Dict[str, Any] = None, intent: str = None) -> None:
         """
         Ajoute un message à la mémoire et gère la conversation.
         
@@ -64,6 +68,7 @@ class MemoryAgent(Agent):
             content (str): Le contenu du message
             emotion (str, optional): L'émotion détectée dans le message
             slots (Dict[str, Any], optional): Les informations extraites (slots)
+            intent (str, optional): L'intention détectée
         """
         try:
             content = str(content).strip()
@@ -72,6 +77,10 @@ class MemoryAgent(Agent):
             # Ajouter les slots si disponibles
             if slots:
                 message_data["slots"] = slots
+                
+            # Ajouter l'intent si disponible
+            if intent:
+                message_data["intent"] = intent
                 
             self._messages.append(message_data)
             
@@ -82,9 +91,11 @@ class MemoryAgent(Agent):
                         self._current_conversation["emotion"] = emotion
                     if slots:
                         self._current_conversation["slots"] = slots
+                    if intent:
+                        self._current_conversation["intent"] = intent
                 if role == "assistant" and self._current_conversation["user"]:
                     self._save_conversation()
-                    self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None}
+                    self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None, "intent": None}
                     
         except Exception as e:
             print(f"Erreur d'ajout de message: {e}")
@@ -99,12 +110,16 @@ class MemoryAgent(Agent):
             current_ids = self._collection.get()
             next_id = len(current_ids.get('ids', [])) + 1 if current_ids.get('ids') else 1
             
-            # Créer le document avec l'émotion et les slots
+            # Créer le document avec l'émotion, les slots et l'intent
             document_text = f"Utilisateur: {conv['user']}\nAssistant: {conv['assistant']}\nÉmotion: {conv.get('emotion', 'neutre')}"
             
             # Ajouter les slots au document si disponibles
             if conv.get("slots"):
                 document_text += f"\nInformations extraites: {json.dumps(conv['slots'], ensure_ascii=False)}"
+                
+            # Ajouter l'intent au document si disponible
+            if conv.get("intent"):
+                document_text += f"\nIntention: {conv['intent']}"
             
             # Préparer les métadonnées
             metadata = {
@@ -113,20 +128,31 @@ class MemoryAgent(Agent):
                 "conversation_id": f"conv_{next_id}",
                 "user_message": conv["user"],
                 "ai_message": conv["assistant"],
-                "emotion": conv.get("emotion", "neutre"),
                 "agent_name": self._name,
                 "agent_role": self._role
             }
             
+            # Ajouter l'émotion aux métadonnées si disponible
+            if conv.get("emotion"):
+                metadata["emotion"] = conv["emotion"]
+            else:
+                metadata["emotion"] = "neutre"
+            
             # Ajouter les slots aux métadonnées si disponibles
             if conv.get("slots"):
                 metadata["slots"] = json.dumps(conv["slots"], ensure_ascii=False)
+                
+            # Ajouter l'intent aux métadonnées si disponible
+            if conv.get("intent"):
+                metadata["intent"] = conv["intent"]
             
+            # Sauvegarder dans ChromaDB
             self._collection.add(
                 ids=[f"conv_{next_id}"],
                 documents=[document_text],
                 metadatas=[metadata]
             )
+                
         except Exception as e:
             print(f"Erreur de sauvegarde ChromaDB: {e}")
             
@@ -143,7 +169,7 @@ class MemoryAgent(Agent):
         """Efface la mémoire et réinitialise ChromaDB."""
         # Réinitialiser les attributs
         self._messages = []
-        self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None}
+        self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None, "intent": None}
         
         # Réinitialiser ChromaDB
         try:
