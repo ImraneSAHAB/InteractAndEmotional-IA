@@ -7,8 +7,6 @@ from typing import Dict, Any, List, Optional
 from intent_detection_agent import intentDetectionAgent
 import json
 
-import re
-
 class AgentOrchestrator(Agent):
     """
     Orchestrateur qui gère les interactions entre les différents agents
