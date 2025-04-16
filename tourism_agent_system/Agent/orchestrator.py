@@ -45,15 +45,25 @@ class AgentOrchestrator(Agent):
             intent = intent_result["intent"]
             slots = intent_result["slots"]
             
+            # Si c'est une demande d'information, chercher dans les conversations précédentes
+            found_information = None
+            if intent == "demande_information" and intent_result.get("search_query"):
+                search_result = self._memory_agent.search_in_conversations(intent_result["search_query"])
+                if search_result["found"] and search_result["confidence"] in ["high", "medium"]:
+                    found_information = search_result["information"]
+            
             # 4. Générer une réponse avec les informations disponibles
-            response = self._response_generator.generate_response(slots, intent)
+            if found_information:
+                response = f"D'après nos conversations précédentes, {found_information}"
+            else:
+                response = self._response_generator.generate_response(slots, intent)
             
             # 5. Sauvegarder la conversation avec les émotions détectées, les slots et l'intent
             # Ajouter le message de l'utilisateur
             self._memory_agent.add_message(
                 role="user",
                 content=message,
-                emotion=json.dumps(emotions) if emotions else None,
+                emotion=emotions[0] if emotions and len(emotions) > 0 else "",
                 slots=slots,
                 intent=intent
             )
@@ -62,6 +72,7 @@ class AgentOrchestrator(Agent):
             self._memory_agent.add_message(
                 role="assistant",
                 content=response,
+                emotion="",  # L'assistant n'a pas d'émotion
                 slots=slots,
                 intent=intent
             )
@@ -72,7 +83,8 @@ class AgentOrchestrator(Agent):
                 "context": conversation_history,
                 "emotions": emotions,
                 "slots": slots,
-                "intent": intent
+                "intent": intent,
+                "found_information": found_information
             }
             
         except Exception as e:

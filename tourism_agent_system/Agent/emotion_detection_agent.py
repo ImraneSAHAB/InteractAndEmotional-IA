@@ -13,7 +13,7 @@ class EmotionDetectionAgent(Agent):
     
     # Mots-clés associés à chaque émotion
     EMOTION_KEYWORDS = {
-        "tristesse": ["seul", "solitude", "isolé", "triste", "malheureux", "déprimé", "chagrin", "peine"],
+        "tristesse": ["solitude", "isolé", "triste", "malheureux", "déprimé", "chagrin", "peine"],
         "joie": ["heureux", "content", "joie", "heureux", "satisfait", "enthousiaste", "excitant", "génial"],
         "colère": ["fâché", "colère", "énervé", "frustré", "TOUT LE TEMPS", "TOUJOURS", "jamais", "insupportable"],
         "peur": ["peur", "anxieux", "inquiet", "stressé", "paniqué", "terrifié", "appréhension", "angoisse"],

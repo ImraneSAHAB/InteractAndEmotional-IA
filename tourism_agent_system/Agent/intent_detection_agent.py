@@ -90,6 +90,7 @@ class intentDetectionAgent(Agent):
             Dict[str, Any]: Dictionnaire contenant 'intent' et 'slots'
         """
         try:
+            
             # Extraire les slots avec les patterns (rapide)
             extracted_slots = self._extract_slots(message)
             
@@ -109,20 +110,35 @@ class intentDetectionAgent(Agent):
                     if value is not None and (key not in extracted_slots or extracted_slots[key] is None):
                         extracted_slots[key] = value
             
-            # Mettre à jour les slots actuels
+            # Mettre à jour les slots actuels en préservant les valeurs existantes
             for key, value in extracted_slots.items():
                 if value is not None:
-                    self._current_slots[key] = value
+                    # Ne mettre à jour que si la valeur actuelle est None ou si c'est une nouvelle information
+                    if key not in self._current_slots or self._current_slots[key] is None:
+                        self._current_slots[key] = value
             
+            # Vérifier si c'est une question
+            question_words = ["où", "qui", "quoi", "comment", "pourquoi", "quand", "quel", "quelle", "quels", "quelles"]
+            if any(word in message.lower() for word in question_words):
+                intent = "demande_information"
+            elif "?" in message:
+                intent = "demande_information"
+            
+            # Si c'est une demande d'information, chercher dans les conversations précédentes
+            if intent == "demande_information":
+                # Extraire la requête de recherche du message
+                search_query = self._extract_search_query(message)
+                
             return {
                 "intent": intent,
-                "slots": self._current_slots
+                "slots": self._current_slots.copy(),
+                "search_query": search_query if intent == "demande_information" else None
             }
             
         except Exception as e:
             return {
                 "intent": "unknown",
-                "slots": self._current_slots
+                "slots": self._current_slots.copy()
             }
 
     def _detect_intent_with_keywords(self, message: str) -> str:
@@ -315,7 +331,6 @@ Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Sl
             )
             return response["message"]["content"]
         except Exception as e:
-            print(f"Erreur lors de l'appel au LLM: {e}")
             return "Intent: unknown\nSlots: {}"
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
@@ -374,3 +389,43 @@ Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Sl
             missing_info.append("time")
             
         return missing_info
+
+    def _extract_search_query(self, message: str) -> str:
+        """
+        Extrait la requête de recherche d'un message.
+        
+        Args:
+            message (str): Le message à analyser
+            
+        Returns:
+            str: La requête de recherche
+        """
+        message = message.lower()
+        
+        # Patterns pour extraire la requête de recherche
+        patterns = [
+            r"où habites-tu\?*",
+            r"où habitez-vous\?*",
+            r"où vis-tu\?*",
+            r"où vivez-vous\?*",
+            r"quel est ton budget\?*",
+            r"quel est votre budget\?*",
+            r"quel type de nourriture préfères-tu\?*",
+            r"quel type de nourriture préférez-vous\?*",
+            r"à quelle heure veux-tu manger\?*",
+            r"à quelle heure voulez-vous manger\?*",
+            r"quelle est ta date de naissance\?*",
+            r"quelle est votre date de naissance\?*",
+            r"quel est ton nom\?*",
+            r"quel est votre nom\?*",
+            r"quel est ton âge\?*",
+            r"quel est votre âge\?*"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message)
+            if match:
+                return match.group(0)
+                
+        # Si aucun pattern ne correspond, retourner le message entier
+        return message
