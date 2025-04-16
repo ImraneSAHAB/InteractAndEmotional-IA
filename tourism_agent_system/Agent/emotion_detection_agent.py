@@ -1,7 +1,7 @@
 # emotion_detection_agent.py
 from Agent import Agent
 import ollama
-from typing import Dict, Any, List, Optional
+from typing import Dict, List
 
 class EmotionDetectionAgent(Agent):
     """
