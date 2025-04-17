@@ -50,7 +50,12 @@
             "role": "Analyste d’intention",
             "goal": "Identifier l’intention de l’utilisateur et extraire les entités pertinentes",
             "backstory": "Spécialiste du traitement du langage naturel, capable d’identifier ce que l’utilisateur souhaite réellement faire ou demander, en extrayant les intentions et les entités clés"
+        },
+        "dialogue_planner": {
+            "name": "Planificateur de dialogue",
+            "role": "Orienteur de la conversation",
+            "goal": "Choisir la prochaine question à poser à l’utilisateur en fonction des slots manquants",
+            "backstory": "Expert en planification conversationnelle, capable de guider intelligemment l’échange pour collecter toutes les informations nécessaires à une réponse complète"
         }
-
     }
 } 
