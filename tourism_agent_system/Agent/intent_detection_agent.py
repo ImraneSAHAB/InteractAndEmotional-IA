@@ -3,69 +3,14 @@ from Agent import Agent
 import ollama
 from typing import Dict, Any, List, Optional
 import re
+import json
 
 class intentDetectionAgent(Agent):
     """
     Agent pour détecter l'intention et extraire les slots remplis ou manquants
     """
 
-    VALID_INTENTS = ["restaurant_search", "activity_search", "hotel_booking", "salutation", "presentation", "remerciement", "confirmation", "negation", "information_generale"]
-
-    # Liste des villes communes pour améliorer la détection
-    COMMON_CITIES = [
-        "dijon", "paris", "lyon", "marseille", "bordeaux", "toulouse", "lille", 
-        "nantes", "strasbourg", "rennes", "nice", "toulon", "grenoble", "montpellier",
-        "rouen", "nancy", "orleans", "tours", "amiens", "caen", "reims", "le havre",
-        "saint-etienne", "brest", "le mans", "dijon", "clermont-ferrand", "toulon",
-        "limoges", "villeurbanne", "nimes", "tours", "pau", "poitiers", "perpignan",
-        "metz", "lens", "argenteuil", "orleans", "roubaix", "montreuil", "mulhouse",
-        "saint-denis", "nancy", "rouen", "argenteuil", "toulon", "fort-de-france"
-    ]
-
-    # Mots-clés pour la détection d'intention
-    INTENT_KEYWORDS = {
-        "restaurant_search": [
-            "restaurant", "manger", "dîner", "diner", "déjeuner", "repas", "table", 
-            "gastronomie", "cuisine", "bistrot", "brasserie", "café", "cafe", "bar",
-            "food", "dinner", "lunch", "breakfast", "petit-déjeuner", "petit dejeuner"
-        ],
-        "activity_search": [
-            "activité", "activite", "visiter", "voir", "faire", "découvrir", "découverte",
-            "excursion", "tour", "visite", "monument", "musée", "musee", "parc", "jardin",
-            "activity", "visit", "see", "do", "discover", "discovery", "tour", "monument",
-            "museum", "park", "garden"
-        ],
-        "hotel_booking": [
-            "hôtel", "hotel", "logement", "hébergement", "hebergement", "chambre", "lit",
-            "nuit", "séjour", "sejour", "réservation", "reservation", "booking", "book",
-            "accommodation", "room", "bed", "night", "stay", "reserve"
-        ],
-        "salutation": [
-            "bonjour", "salut", "hey", "coucou", "bonsoir", "hello", "hi", "hey", "bonsoir",
-            "bonne journée", "bonne soirée", "à bientôt", "au revoir", "bye", "goodbye"
-        ],
-        "presentation": [
-            "je m'appelle", "mon nom est", "je suis", "présentation", "presentation",
-            "qui es-tu", "qui êtes-vous", "comment vous appelez-vous", "comment t'appelles-tu"
-        ],
-        "remerciement": [
-            "merci", "thanks", "thank you", "merci beaucoup", "je vous remercie",
-            "je te remercie", "c'est gentil", "c'est sympa", "c'est cool"
-        ],
-        "confirmation": [
-            "oui", "d'accord", "ok", "parfait", "super", "génial", "excellent",
-            "je confirme", "c'est noté", "je valide", "je suis d'accord"
-        ],
-        "negation": [
-            "non", "pas du tout", "absolument pas", "jamais", "ne pas", "ne plus",
-            "refuser", "refuse", "refusé", "refusee"
-        ],
-        "information_generale": [
-            "quoi", "comment", "pourquoi", "quand", "où", "qui", "quel", "quelle",
-            "quels", "quelles", "explique", "expliquer", "détails", "details",
-            "plus d'information", "plus d'infos", "en savoir plus"
-        ]
-    }
+    VALID_INTENTS = ["restaurant_search", "activity_search", "hotel_booking", "salutation", "presentation", "remerciement", "confirmation", "negation", "information_generale", "demande_information"]
 
     def __init__(self, name: str = "intent_slot_extractor"):
         super().__init__(name)
@@ -73,10 +18,10 @@ class intentDetectionAgent(Agent):
         self._model_config = self._config["model"]
         # Initialisation des slots par défaut
         self._current_slots = {
-            "location": None,
-            "food_type": None,
-            "budget": None,
-            "time": None
+            "location": "",
+            "food_type": "",
+            "budget": "",
+            "time": ""
         }
 
     def run(self, message: str) -> Dict[str, Any]:
@@ -90,163 +35,108 @@ class intentDetectionAgent(Agent):
             Dict[str, Any]: Dictionnaire contenant 'intent' et 'slots'
         """
         try:
+            # Initialiser les slots avec des valeurs vides
+            self._current_slots = {
+                "location": "",
+                "food_type": "",
+                "budget": "",
+                "time": ""
+            }
             
-            # Extraire les slots avec les patterns (rapide)
-            extracted_slots = self._extract_slots(message)
+            # Utiliser le LLM pour l'analyse complète
+            prompt = self._build_prompt(message)
+            response = self._get_llm_response(prompt)
+            result = self._parse_response(response)
             
-            # Détecter l'intention avec les mots-clés (rapide)
-            intent = self._detect_intent_with_keywords(message)
+            # Mettre à jour les slots et l'intention
+            intent = result["intent"]
+            self._current_slots = result["slots"]
             
-            # Si l'intention n'est pas claire, utiliser le LLM (lent)
-            if intent == "unknown":
-                prompt = self._build_prompt(message)
-                response = self._get_llm_response(prompt)
-                result = self._parse_response(response)
-                intent = result["intent"]
-                
-                # Fusionner les slots extraits par le LLM avec ceux extraits par les patterns
-                llm_slots = result["slots"]
-                for key, value in llm_slots.items():
-                    if value is not None and (key not in extracted_slots or extracted_slots[key] is None):
-                        extracted_slots[key] = value
-            
-            # Mettre à jour les slots actuels en préservant les valeurs existantes
-            for key, value in extracted_slots.items():
-                if value is not None:
-                    # Ne mettre à jour que si la valeur actuelle est None ou si c'est une nouvelle information
-                    if key not in self._current_slots or self._current_slots[key] is None:
-                        self._current_slots[key] = value
-            
-            # Vérifier si c'est une question
-            question_words = ["où", "qui", "quoi", "comment", "pourquoi", "quand", "quel", "quelle", "quels", "quelles"]
-            if any(word in message.lower() for word in question_words):
-                intent = "demande_information"
-            elif "?" in message:
-                intent = "demande_information"
-            
-            # Si c'est une demande d'information, chercher dans les conversations précédentes
+            # Vérifier si c'est une demande d'information
             if intent == "demande_information":
-                # Extraire la requête de recherche du message
                 search_query = self._extract_search_query(message)
-                
+                return {
+                    "intent": intent,
+                    "slots": self._current_slots.copy(),
+                    "search_query": search_query
+                }
+            
             return {
                 "intent": intent,
                 "slots": self._current_slots.copy(),
-                "search_query": search_query if intent == "demande_information" else None
+                "search_query": None
             }
             
         except Exception as e:
             return {
                 "intent": "unknown",
-                "slots": self._current_slots.copy()
+                "slots": {
+                    "location": "",
+                    "food_type": "",
+                    "budget": "",
+                    "time": ""
+                }
             }
 
-    def _detect_intent_with_keywords(self, message: str) -> str:
-        """Détecte l'intention en utilisant des mots-clés"""
-        message = message.lower()
-        intent_counts = {intent: 0 for intent in self.VALID_INTENTS}
-        
-        # Compter les occurrences des mots-clés pour chaque intention
-        for intent, keywords in self.INTENT_KEYWORDS.items():
-            for keyword in keywords:
-                if keyword in message:
-                    intent_counts[intent] += 1
-        
-        # Trouver l'intention avec le plus de mots-clés
-        max_count = max(intent_counts.values())
-        if max_count > 0:
-            return max(intent_counts.items(), key=lambda x: x[1])[0]
-        
-        return "unknown"
-
-    def _extract_slots(self, message: str) -> Dict[str, Any]:
+    def _extract_slots(self, message: str, intent: str) -> Dict[str, str]:
         """
-        Extrait les slots du message en utilisant des patterns et des mots-clés.
+        Extrait les slots pertinents du message en fonction de l'intention détectée.
+        Utilise le LLM pour extraire les informations de manière plus flexible.
 
         Args:
-            message (str): Le message à analyser
+            message (str): Le message de l'utilisateur
+            intent (str): L'intention détectée
 
         Returns:
-            Dict[str, Any]: Les slots extraits
+            Dict[str, str]: Dictionnaire des slots extraits
         """
-        message_lower = message.lower()
-        slots = {
-            "location": None,
-            "food_type": None,
-            "budget": None,
-            "time": None
+        # Définir les slots requis pour chaque intention
+        required_slots = {
+            "restaurant_search": ["location", "food_type", "budget", "time"],
+            "activity_search": ["location", "activity_type", "date", "price_range"]
         }
 
-        # Détection de la localisation
-        # Patterns pour détecter les villes
-        location_patterns = [
-            r'à\s+([a-zéèêëàâäôöûüçîï]+(?:\s+[a-zéèêëàâäôöûüçîï-]+)*)',
-            r'dans\s+([a-zéèêëàâäôöûüçîï]+(?:\s+[a-zéèêëàâäôöûüçîï-]+)*)',
-            r'en\s+([a-zéèêëàâäôöûüçîï]+(?:\s+[a-zéèêëàâäôöûüçîï-]+)*)',
-            r'à\s+([a-zéèêëàâäôöûüçîï]+(?:\s+[a-zéèêëàâäôöûüçîï-]+)*)',
-            r'dans\s+([a-zéèêëàâäôöûüçîï]+(?:\s+[a-zéèêëàâäôöûüçîï-]+)*)',
-            r'en\s+([a-zéèêëàâäôöûüçîï]+(?:\s+[a-zéèêëàâäôöûüçîï-]+)*)'
-        ]
+        # Si l'intention n'a pas de slots requis, retourner un dictionnaire vide
+        if intent not in required_slots:
+            return {}
 
-        # Vérifier d'abord dans la liste des villes communes
-        for city in self.COMMON_CITIES:
-            if city in message_lower:
-                slots["location"] = city.title()
-                break
+        # Construire le prompt pour l'extraction des slots
+        slots_prompt = f"""
+        En tant qu'agent de détection d'intention, extrayez les informations pertinentes du message suivant.
+        Intention détectée : {intent}
+        Slots à extraire : {', '.join(required_slots[intent])}
+        
+        Message : {message}
+        
+        Pour chaque slot, extrayez la valeur si elle est présente dans le message.
+        Si une information n'est pas présente, laissez le champ vide.
+        
+        Format de réponse attendu (JSON) :
+        {{
+            "slot1": "valeur1",
+            "slot2": "valeur2",
+            ...
+        }}
+        """
 
-        # Si aucune ville commune n'est trouvée, utiliser les patterns
-        if slots["location"] is None:
-            for pattern in location_patterns:
-                match = re.search(pattern, message_lower)
-                if match:
-                    potential_city = match.group(1).strip()
-                    # Vérifier si la ville extraite est dans la liste des villes communes
-                    if potential_city.lower() in self.COMMON_CITIES:
-                        slots["location"] = potential_city.title()
-                        break
-
-        # Type de nourriture
-        food_patterns = {
-            "traditional": ["tradition", "traditionnel", "classique", "classic"],
-            "modern": ["moderne", "contemporain", "fusion", "innovant"],
-            "vegetarian": ["végétarien", "végé", "vegan", "végétalien"],
-            "asian": ["asiatique", "chinois", "japonais", "thaï", "vietnamien"],
-            "italian": ["italien", "pizza", "pasta", "risotto"],
-            "french": ["français", "bistrot", "brasserie", "gastronomique"]
-        }
-
-        for food_type, keywords in food_patterns.items():
-            if any(keyword in message_lower for keyword in keywords):
-                slots["food_type"] = food_type
-                break
-
-        # Budget
-        budget_patterns = {
-            "budget": ["pas cher", "économique", "budget", "petit prix", "bon marché"],
-            "mid-range": ["moyen", "modéré", "standard", "normal"],
-            "luxury": ["luxe", "haut de gamme", "gastronomique", "premium", "exclusif"]
-        }
-
-        for budget_type, keywords in budget_patterns.items():
-            if any(keyword in message_lower for keyword in keywords):
-                slots["budget"] = budget_type
-                break
-
-        # Temps
-        time_patterns = {
-            "tonight": ["ce soir", "tonight", "dîner", "diner"],
-            "tomorrow": ["demain", "tomorrow"],
-            "this_weekend": ["weekend", "semaine", "week-end", "samedi", "dimanche"],
-            "lunch": ["déjeuner", "midi", "lunch"],
-            "dinner": ["dîner", "soir", "dinner"]
-        }
-
-        for time_type, keywords in time_patterns.items():
-            if any(keyword in message_lower for keyword in keywords):
-                slots["time"] = time_type
-                break
-
-        return slots
+        try:
+            # Obtenir la réponse du LLM
+            response = self._llm.generate(slots_prompt)
+            
+            # Parser la réponse JSON
+            slots = json.loads(response)
+            
+            # S'assurer que tous les slots requis sont présents
+            for slot in required_slots[intent]:
+                if slot not in slots:
+                    slots[slot] = ""
+            
+            return slots
+            
+        except Exception as e:
+            print(f"Erreur lors de l'extraction des slots : {str(e)}")
+            # En cas d'erreur, retourner un dictionnaire avec des slots vides
+            return {slot: "" for slot in required_slots[intent]}
 
     def _merge_slots(self, llm_slots: Dict[str, Any], extracted_slots: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -288,21 +178,28 @@ class intentDetectionAgent(Agent):
         """
         system_prompt = """
 Vous êtes un agent expert en traitement du langage naturel. Votre tâche est d'analyser un message utilisateur et d'en extraire :
-1. L'intention principale de l'utilisateur parmi : restaurant_search, activity_search, hotel_booking, salutation, presentation, remerciement, confirmation, negation, information_generale
+1. L'intention principale de l'utilisateur parmi : restaurant_search, activity_search, hotel_booking, salutation, presentation, remerciement, confirmation, negation, information_generale, demande_information
 2. Les slots (informations extraites) remplis, sous forme de paires clé/valeur.
 
 Les slots possibles sont :
-- location : la ville ou le lieu mentionné
+- location : la ville ou le lieu mentionné (ex: "Paris", "Dijon", etc.)
 - food_type : le type de cuisine (traditional, modern, vegetarian, asian, italian, french)
 - budget : le niveau de prix (budget, mid-range, luxury)
 - time : le moment (tonight, tomorrow, this_weekend, lunch, dinner)
 
+Instructions spécifiques :
+1. Pour les phrases comme "J'habite à Paris" ou "Je vis à Dijon", détectez l'intention comme "information_generale" et extrayez la ville dans le slot "location"
+2. Pour les questions comme "Où habites-tu ?", détectez l'intention comme "demande_information" et extrayez la requête dans le slot approprié
+3. Ne laissez jamais un slot vide, utilisez une chaîne vide ("") si aucune information n'est trouvée
+4. Soyez attentif aux variations de formulation (ex: "je suis à", "je vis à", "j'habite à", etc.)
+
 Répondez dans le format suivant (sans texte en dehors) :
 Intent: <intent>
 Slots:
-- <slot_name>: <slot_value>
-- ...
-Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Slots: {}"
+- location: <ville ou lieu>
+- food_type: <type de cuisine>
+- budget: <niveau de prix>
+- time: <moment>
 """
 
         return [
@@ -335,7 +232,7 @@ Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Sl
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
         """
-        Parse la réponse du LLM pour en extraire l'intention et les slots
+        Parse la réponse du LLM pour en extraire l'intention et les slots.
 
         Args:
             response (str): Réponse texte brute
@@ -345,7 +242,12 @@ Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Sl
         """
         lines = response.strip().splitlines()
         intent = None
-        slots = {}
+        slots = {
+            "location": "",
+            "food_type": "",
+            "budget": "",
+            "time": ""
+        }
 
         for line in lines:
             if line.lower().startswith("intent:"):
@@ -353,7 +255,12 @@ Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Sl
             elif line.strip().startswith("-"):
                 if ":" in line:
                     key, value = line.strip("- ").split(":", 1)
-                    slots[key.strip()] = value.strip()
+                    key = key.strip()
+                    value = value.strip()
+                    # Supprimer les guillemets si présents
+                    value = value.strip('"')
+                    if key in slots:
+                        slots[key] = value if value else ""
 
         if intent not in self.VALID_INTENTS and intent != "unknown":
             intent = "unknown"
@@ -392,7 +299,7 @@ Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Sl
 
     def _extract_search_query(self, message: str) -> str:
         """
-        Extrait la requête de recherche d'un message.
+        Extrait la requête de recherche d'un message en utilisant le LLM.
         
         Args:
             message (str): Le message à analyser
@@ -400,32 +307,26 @@ Si aucune intention claire n'est identifiable, utilisez "Intent: unknown" et "Sl
         Returns:
             str: La requête de recherche
         """
-        message = message.lower()
-        
-        # Patterns pour extraire la requête de recherche
-        patterns = [
-            r"où habites-tu\?*",
-            r"où habitez-vous\?*",
-            r"où vis-tu\?*",
-            r"où vivez-vous\?*",
-            r"quel est ton budget\?*",
-            r"quel est votre budget\?*",
-            r"quel type de nourriture préfères-tu\?*",
-            r"quel type de nourriture préférez-vous\?*",
-            r"à quelle heure veux-tu manger\?*",
-            r"à quelle heure voulez-vous manger\?*",
-            r"quelle est ta date de naissance\?*",
-            r"quelle est votre date de naissance\?*",
-            r"quel est ton nom\?*",
-            r"quel est votre nom\?*",
-            r"quel est ton âge\?*",
-            r"quel est votre âge\?*"
+        prompt = [
+            {"role": "system", "content": """
+Vous êtes un expert en extraction d'informations. Votre tâche est d'extraire la requête de recherche d'un message.
+Pour les questions comme "Où habites-tu ?", "Quel est ton budget ?", etc., extrayez la question complète.
+Pour les autres types de messages, retournez le message tel quel.
+
+Répondez uniquement avec la requête extraite, sans explications ni texte supplémentaire.
+"""},
+            {"role": "user", "content": f"Message à analyser : {message}"}
         ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, message)
-            if match:
-                return match.group(0)
-                
-        # Si aucun pattern ne correspond, retourner le message entier
-        return message
+
+        try:
+            response = self._llm.chat(
+                model=self._model_config["name"],
+                messages=prompt,
+                options={
+                    "temperature": self._model_config["temperature"],
+                    "max_tokens": self._model_config["max_tokens"]
+                }
+            )
+            return response["message"]["content"].strip()
+        except Exception as e:
+            return message

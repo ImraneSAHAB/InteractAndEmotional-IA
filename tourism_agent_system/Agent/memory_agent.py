@@ -227,22 +227,35 @@ class MemoryAgent(Agent):
         # Réinitialiser les attributs
         self._messages = []
         self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None, "intent": None}
+        self._current_slots = {
+            "location": None,
+            "food_type": None,
+            "budget": None,
+            "time": None
+        }
         
         # Réinitialiser ChromaDB
         try:
-            # Supprimer la collection existante
+            # Récupérer tous les IDs existants
+            results = self._collection.get()
+            if results and "ids" in results and results["ids"]:
+                # Supprimer tous les documents existants
+                self._collection.delete(ids=results["ids"])
+            
+            # Supprimer la collection
             try:
                 self._chroma_client.delete_collection("conversations")
-            except:
-                pass
+            except Exception as e:
+                print(f"Erreur lors de la suppression de la collection: {e}")
             
-            # Recréer la collection
-            self._collection = self._chroma_client.get_or_create_collection(
+            # Recréer une collection vide
+            self._collection = self._chroma_client.create_collection(
                 name="conversations",
                 metadata={"hnsw:space": "cosine"}
             )
-        except:
-            pass
+            
+        except Exception as e:
+            print(f"Erreur lors de l'effacement de la mémoire: {e}")
             
     def run(self, prompt: str) -> str:
         """
