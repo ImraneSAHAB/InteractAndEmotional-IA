@@ -22,8 +22,15 @@ class MemoryAgent(Agent):
         # Initialiser le LLM avec la configuration
         self._llm = ollama.Client()
         self._model_config = self._config["model"]
-        # Initialiser ChromaDB
-        self._chroma_client = chromadb.PersistentClient(path="chroma_db")
+        
+        # Créer le chemin absolu pour ChromaDB dans tourism_agent_system
+        base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        chroma_db_path = os.path.join(base_path, "tourism_agent_system", "chroma_db")
+        if not os.path.exists(chroma_db_path):
+            os.makedirs(chroma_db_path)
+            
+        # Initialiser ChromaDB avec le chemin absolu
+        self._chroma_client = chromadb.PersistentClient(path=chroma_db_path)
         self._collection = self._chroma_client.get_or_create_collection(
             name="conversations",
             metadata={"hnsw:space": "cosine"}
