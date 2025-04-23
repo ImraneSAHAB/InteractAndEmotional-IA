@@ -35,8 +35,6 @@ class InteractionalAgent(Agent):
                 # L'orchestrator gère tout le traitement
                 result = self._orchestrator.process_message(user_input)
                 
-                print("\n[DEBUG] Résultat de l'orchestrateur:", result)  # Log de débogage
-                
                 if result["success"]:
                     # Afficher la réponse de l'assistant mot par mot
                     print("\nAssistant: ", end="", flush=True)
