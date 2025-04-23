@@ -112,46 +112,52 @@ class MemoryAgent(Agent):
             slots (Dict[str, Any], optional): Les slots extraits
             intent (str, optional): L'intention détectée
         """
-        
-        # Créer le message
-        message = {
-            "role": role,
-            "content": content
-        }
-
-        # Ajouter l'émotion si disponible
-        if emotion:
-            message["emotion"] = emotion
-
-        # Ajouter l'intent si disponible
-        if intent:
-            message["intent"] = intent
-
-        # Ajouter le message à la liste
-        self._messages.append(message)
-
-        # Mettre à jour la conversation courante
-        if role == "user":
-            self._current_conversation["user_message"] = content
-            self._current_conversation["emotion"] = emotion if emotion else ""
-            self._current_conversation["intent"] = intent if intent else ""
+        try:
+            # Initialiser les slots avec tous les champs possibles
+            default_slots = {
+                "location": None,
+                "food_type": None,
+                "budget": None,
+                "time": None
+            }
             
-            # Mettre à jour les slots actuels avec les nouvelles valeurs non-nulles
-            if slots is not None:
-                for key, value in slots.items():
-                    if value is not None:
-                        self._current_slots[key] = value
+            # Mettre à jour les slots par défaut avec les nouveaux slots
+            if slots:
+                default_slots.update(slots)
             
-            # Sauvegarder les slots mis à jour dans la conversation
-            self._current_conversation["slots"] = json.dumps(self._current_slots)
-            
-        elif role == "assistant":
-            self._current_conversation["ai_message"] = content
+            # Créer le message
+            message = {
+                "role": role,
+                "content": content
+            }
 
-        # Si nous avons un message utilisateur et un message assistant, sauvegarder la conversation
-        if (self._current_conversation.get("user_message") is not None and 
-            self._current_conversation.get("ai_message") is not None):
-            self._save_conversation()
+            # Ajouter l'émotion si disponible
+            if emotion:
+                message["emotion"] = emotion
+
+            # Ajouter l'intent si disponible
+            if intent:
+                message["intent"] = intent
+
+            # Ajouter le message à la liste
+            self._messages.append(message)
+
+            # Mettre à jour la conversation courante
+            if role == "user":
+                self._current_conversation["user_message"] = content
+                self._current_conversation["emotion"] = emotion if emotion else ""
+                self._current_conversation["intent"] = intent if intent else ""
+                self._current_conversation["slots"] = default_slots
+            elif role == "assistant":
+                self._current_conversation["ai_message"] = content
+
+            # Si nous avons un message utilisateur et un message assistant, sauvegarder la conversation
+            if (self._current_conversation.get("user_message") is not None and 
+                self._current_conversation.get("ai_message") is not None):
+                self._save_conversation()
+                
+        except Exception as e:
+            print(f"Erreur lors de l'ajout du message: {e}")
             
     def _save_conversation(self) -> None:
         """
@@ -230,39 +236,82 @@ class MemoryAgent(Agent):
         return self._messages.copy()
             
     def clear_memory(self) -> None:
-        """Efface la mémoire et réinitialise ChromaDB."""
-        # Réinitialiser les attributs
-        self._messages = []
-        self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None, "intent": None}
-        self._current_slots = {
-            "location": None,
-            "food_type": None,
-            "budget": None,
-            "time": None
-        }
-        
-        # Réinitialiser ChromaDB
+        """
+        Efface la mémoire et réinitialise ChromaDB.
+        """
         try:
-            # Récupérer tous les IDs existants
-            results = self._collection.get()
-            if results and "ids" in results and results["ids"]:
-                # Supprimer tous les documents existants
-                self._collection.delete(ids=results["ids"])
+            # Fermer la connexion actuelle
+            self._chroma_client = None
+            self._collection = None
             
-            # Supprimer la collection
-            try:
-                self._chroma_client.delete_collection("conversations")
-            except Exception as e:
-                print(f"Erreur lors de la suppression de la collection: {e}")
+            # Supprimer complètement le répertoire de la base de données
+            base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            chroma_db_path = os.path.join(base_path, "tourism_agent_system", "chroma_db")
             
-            # Recréer une collection vide
-            self._collection = self._chroma_client.create_collection(
+            if os.path.exists(chroma_db_path):
+                import shutil
+                try:
+                    # Essayer de supprimer le répertoire
+                    shutil.rmtree(chroma_db_path)
+                except PermissionError:
+                    # Si échec, essayer de supprimer les fichiers un par un
+                    for root, dirs, files in os.walk(chroma_db_path, topdown=False):
+                        for name in files:
+                            try:
+                                os.remove(os.path.join(root, name))
+                            except:
+                                pass
+                        for name in dirs:
+                            try:
+                                os.rmdir(os.path.join(root, name))
+                            except:
+                                pass
+                    try:
+                        os.rmdir(chroma_db_path)
+                    except:
+                        pass
+            
+            # Recréer le répertoire
+            os.makedirs(chroma_db_path, exist_ok=True)
+            
+            # Réinitialiser le client ChromaDB
+            self._chroma_client = chromadb.PersistentClient(path=chroma_db_path)
+            self._collection = self._chroma_client.get_or_create_collection(
                 name="conversations",
                 metadata={"hnsw:space": "cosine"}
             )
             
+            # Réinitialiser les attributs
+            self._messages = []
+            self._current_conversation = {
+                "user_message": None,
+                "ai_message": None,
+                "emotion": None,
+                "intent": None,
+                "slots": {
+                    "location": None,
+                    "food_type": None,
+                    "budget": None,
+                    "time": None
+                }
+            }
+            
         except Exception as e:
             print(f"Erreur lors de l'effacement de la mémoire: {e}")
+            # En cas d'erreur, essayer de réinitialiser au moins les variables en mémoire
+            self._messages = []
+            self._current_conversation = {
+                "user_message": None,
+                "ai_message": None,
+                "emotion": None,
+                "intent": None,
+                "slots": {
+                    "location": None,
+                    "food_type": None,
+                    "budget": None,
+                    "time": None
+                }
+            }
             
     def run(self, prompt: str) -> str:
         """
