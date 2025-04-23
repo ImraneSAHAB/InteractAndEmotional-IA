@@ -234,9 +234,16 @@ class MemoryAgent(Agent):
                 try:
                     # Récupérer tous les IDs de la collection
                     results = self._collection.get()
-                    if results and "ids" in results:
+                    if results and "ids" in results and results["ids"]:
                         # Supprimer tous les documents de la collection
                         self._collection.delete(ids=results["ids"])
+                        
+                        # Vérifier que la collection est bien vide
+                        remaining = self._collection.get()
+                        if remaining and "ids" in remaining and remaining["ids"]:
+                            print(f"Certains documents n'ont pas été supprimés: {remaining['ids']}")
+                            # Essayer de supprimer à nouveau
+                            self._collection.delete(ids=remaining["ids"])
                 except Exception as e:
                     print(f"Erreur lors de la suppression des documents: {e}")
             
