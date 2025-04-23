@@ -64,9 +64,50 @@ class AgentOrchestrator(Agent):
 
             # 4. Fusionner les nouveaux slots avec les slots existants
             current_slots = self._memory_agent._current_slots.copy()
-            for key, value in new_slots.items():
-                if value:  # Ne mettre à jour que si la nouvelle valeur n'est pas vide
-                    current_slots[key] = value
+            
+            # Vérifier si c'est une sélection de restaurant
+            is_selection = False
+            if intent == "restaurant_search":
+                # Utiliser le LLM pour détecter si c'est une sélection
+                prompt = [
+                    {"role": "system", "content": """Vous êtes un assistant qui analyse les messages des utilisateurs.
+                    Votre tâche est de déterminer si le message est une sélection de restaurant parmi des suggestions.
+                    
+                    Répondez uniquement par "oui" si c'est une sélection, "non" sinon.
+                    
+                    Exemples de sélections:
+                    - "Je choisis le premier"
+                    - "Je prends le Wagamama"
+                    - "Le premier restaurant"
+                    - "La deuxième option"
+                    
+                    Exemples de non-sélections:
+                    - "Je veux un restaurant chinois"
+                    - "Quels sont les restaurants disponibles ?"
+                    - "Je cherche un restaurant pas cher"
+                    """},
+                    {"role": "user", "content": f"Le message suivant est-il une sélection de restaurant ? : {message}"}
+                ]
+                
+                response = self._llm.chat(
+                    model=self._model_config["name"],
+                    messages=prompt,
+                    options={
+                        "temperature": 0.1,
+                        "max_tokens": 10
+                    }
+                )
+                
+                is_selection = "oui" in response["message"]["content"].lower()
+            
+            if is_selection:
+                # Conserver tous les slots précédents
+                pass
+            else:
+                # Mettre à jour les slots avec les nouvelles valeurs
+                for key, value in new_slots.items():
+                    if value is not None:  # Mettre à jour même si la valeur est vide
+                        current_slots[key] = value
 
             # Si l'utilisateur demande une info déjà connue, chercher en mémoire
             found_information = None
@@ -96,15 +137,23 @@ class AgentOrchestrator(Agent):
             if threshold_result["is_complete"]:
                 # Générer la réponse finale
                 response = self._response_generator.generate_response(
-                    slots=threshold_result["filled_slots"],
-                    intent=threshold_result["intent"],
-                    emotion=current_emotion
+                    message=message,
+                    emotion=current_emotion,
+                    intent=intent,
+                    slots=current_slots
                 )
             else:
+                # Vérifier tous les slots manquants
+                missing_slots = []
+                for slot in required_slots.get(intent, []):
+                    if not current_slots.get(slot):
+                        missing_slots.append(slot)
+                
                 # Générer la prochaine question
                 response = self._response_generator.generate_question(
-                    missing_slot=threshold_result["missing_slots"][0],
+                    missing_slots=missing_slots,
                     filled_slots=current_slots,
+                    message=message,
                     emotion=current_emotion
                 )
 

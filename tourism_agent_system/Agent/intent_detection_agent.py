@@ -21,7 +21,9 @@ class IntentDetectionAgent(Agent):
             "location": "",
             "food_type": "",
             "budget": "",
-            "time": ""
+            "time": "",
+            "activity_type": "",
+            "date": ""
         }
 
     def run(self, message: str) -> Dict[str, Any]:
@@ -40,7 +42,9 @@ class IntentDetectionAgent(Agent):
                 "location": "",
                 "food_type": "",
                 "budget": "",
-                "time": ""
+                "time": "",
+                "activity_type": "",
+                "date": ""
             }
             
             # Utiliser le LLM pour l'analyse complète
@@ -74,7 +78,9 @@ class IntentDetectionAgent(Agent):
                     "location": "",
                     "food_type": "",
                     "budget": "",
-                    "time": ""
+                    "time": "",
+                    "activity_type": "",
+                    "date": ""
                 }
             }
 
@@ -183,15 +189,25 @@ Vous êtes un agent expert en traitement du langage naturel. Votre tâche est d'
 
 Les slots possibles sont :
 - location : la ville ou le lieu mentionné (ex: "Paris", "Dijon", etc.)
-- food_type : le type de cuisine (traditional, modern, vegetarian, asian, italian, french)
-- budget : le niveau de prix (budget, mid-range, luxury)
-- time : le moment (tonight, tomorrow, this_weekend, lunch, dinner)
+- food_type : le type de cuisine (chinois, italien, français, japonais, indien, etc.)
+- budget : le niveau de prix (20€, 30€, pas cher, moyen, luxe, etc.)
+- time : le moment (ce soir, demain, ce weekend, midi, soir, etc.)
 
 Instructions spécifiques :
-1. Pour les phrases comme "J'habite à Paris" ou "Je vis à Dijon", détectez l'intention comme "information_generale" et extrayez la ville dans le slot "location"
-2. Pour les questions comme "Où habites-tu ?", détectez l'intention comme "demande_information" et extrayez la requête dans le slot approprié
-3. Ne laissez jamais un slot vide, utilisez une chaîne vide ("") si aucune information n'est trouvée
-4. Soyez attentif aux variations de formulation (ex: "je suis à", "je vis à", "j'habite à", etc.)
+1. Si le message contient une demande de recherche de restaurant (ex: "je veux trouver un restaurant", "je cherche un restaurant", "je souhaite trouver un restaurant"), détectez l'intention comme "restaurant_search"
+2. Si le message contient une demande de recherche d'activité (ex: "je veux faire une activité", "je cherche des activités", "je souhaite trouver des choses à faire"), détectez l'intention comme "activity_search"
+3. Si le message contient une demande d'activité, détectez l'intention comme "activity_search"
+4. Si le message contient une demande de réservation d'hôtel (ex: "je veux réserver un hôtel", "je cherche un hôtel", "je souhaite trouver un logement"), détectez l'intention comme "hotel_booking"
+5. Si le message contient une demande d'hôtel, détectez l'intention comme "hotel_booking"
+6. Pour les questions comme "Où habites-tu ?", détectez l'intention comme "demande_information"
+7. Ne laissez jamais un slot vide, utilisez une chaîne vide ("") si aucune information n'est trouvée
+8. Soyez attentif aux variations de formulation (ex: "je suis à", "je vis à", "j'habite à", etc.)
+
+Instructions pour l'extraction des slots :
+1. Pour le type de cuisine (food_type), détectez tous les types de cuisine mentionnés (chinois, italien, français, etc.)
+2. Pour le budget, détectez les montants exacts (20€, 30€) et les niveaux de prix (pas cher, moyen, luxe)
+3. Pour l'heure (time), détectez les moments précis (ce soir, demain) et les périodes (midi, soir)
+4. Pour la localisation (location), détectez les villes et les quartiers mentionnés
 
 Répondez dans le format suivant (sans texte en dehors) :
 Intent: <intent>
@@ -246,7 +262,9 @@ Slots:
             "location": None,
             "food_type": None,
             "budget": None,
-            "time": None
+            "time": None,
+            "activity_type": None,
+            "date": None
         }
 
         for line in lines:

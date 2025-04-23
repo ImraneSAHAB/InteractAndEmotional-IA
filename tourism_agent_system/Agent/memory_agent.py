@@ -38,12 +38,17 @@ class MemoryAgent(Agent):
         
         # Initialiser les attributs
         self._messages = []
-        self._current_conversation = {"user": None, "assistant": None, "emotion": None, "slots": None, "intent": None}
-        self._current_slots = {
-            "location": None,
-            "food_type": None,
-            "budget": None,
-            "time": None
+        self._current_conversation = {
+            "user_message": None,
+            "ai_message": None,
+            "emotion": None,
+            "intent": None,
+            "slots": {
+                "location": None,
+                "food_type": None,
+                "budget": None,
+                "time": None
+            }
         }
         self._load_messages_from_chromadb()
         
@@ -113,18 +118,6 @@ class MemoryAgent(Agent):
             intent (str, optional): L'intention détectée
         """
         try:
-            # Initialiser les slots avec tous les champs possibles
-            default_slots = {
-                "location": None,
-                "food_type": None,
-                "budget": None,
-                "time": None
-            }
-            
-            # Mettre à jour les slots par défaut avec les nouveaux slots
-            if slots:
-                default_slots.update(slots)
-            
             # Créer le message
             message = {
                 "role": role,
@@ -147,7 +140,13 @@ class MemoryAgent(Agent):
                 self._current_conversation["user_message"] = content
                 self._current_conversation["emotion"] = emotion if emotion else ""
                 self._current_conversation["intent"] = intent if intent else ""
-                self._current_conversation["slots"] = default_slots
+                
+                # Mettre à jour les slots
+                if slots:
+                    for key, value in slots.items():
+                        if value is not None:  # Mettre à jour même si la valeur est vide
+                            self._current_conversation["slots"][key] = value
+                
             elif role == "assistant":
                 self._current_conversation["ai_message"] = content
 
@@ -168,20 +167,14 @@ class MemoryAgent(Agent):
             if not self._current_conversation.get("user_message") or not self._current_conversation.get("ai_message"):
                 return
 
-            # Préparer les métadonnées en convertissant les None en chaînes vides
+            # Préparer les métadonnées
             metadata = {
                 "user_message": self._current_conversation["user_message"],
                 "ai_message": self._current_conversation["ai_message"],
                 "emotion": self._current_conversation.get("emotion", ""),
                 "intent": self._current_conversation.get("intent", ""),
-                "slots": self._current_conversation.get("slots", "{}")
+                "slots": json.dumps(self._current_conversation["slots"], ensure_ascii=False)
             }
-
-            # S'assurer que les slots sont une chaîne JSON valide
-            if metadata["slots"] is None:
-                metadata["slots"] = "{}"
-            elif not isinstance(metadata["slots"], str):
-                metadata["slots"] = json.dumps(metadata["slots"])
 
             # Créer le document avec les métadonnées incluses
             document = (
@@ -192,27 +185,18 @@ class MemoryAgent(Agent):
                 f"Slots: {metadata['slots']}"
             )
 
-            # Supprimer la collection existante
-            try:
-                self._chroma_client.delete_collection("conversations")
-            except:
-                pass
-            
-            # Recréer la collection
-            self._collection = self._chroma_client.get_or_create_collection(
-                name="conversations",
-                metadata={"hnsw:space": "cosine"}
-            )
+            # Générer un ID unique pour le document
+            doc_id = self._generate_unique_id()
             
             # Ajouter le document à la collection
             try:
                 self._collection.add(
-                    ids=["0"],
+                    ids=[doc_id],
                     documents=[document],
                     metadatas=[metadata]
                 )
-            except:
-                pass
+            except Exception as e:
+                print(f"Erreur lors de l'ajout du document: {e}")
             
             # Réinitialiser la conversation courante seulement après une sauvegarde réussie
             self._current_conversation = {
@@ -220,11 +204,16 @@ class MemoryAgent(Agent):
                 "ai_message": None,
                 "emotion": None,
                 "intent": None,
-                "slots": None
+                "slots": {
+                    "location": None,
+                    "food_type": None,
+                    "budget": None,
+                    "time": None
+                }
             }
 
-        except:
-            pass
+        except Exception as e:
+            print(f"Erreur lors de la sauvegarde de la conversation: {e}")
             
     def get_messages(self) -> List[Dict[str, Any]]:
         """
@@ -460,22 +449,10 @@ class MemoryAgent(Agent):
 
     def _generate_unique_id(self) -> str:
         """
-        Génère un ID unique qui n'existe pas déjà dans la collection.
+        Génère un ID unique pour un nouveau document.
         
         Returns:
             str: Un ID unique
         """
-        # Récupérer tous les IDs existants
-        try:
-            results = self._collection.get()
-            existing_ids = set(results.get("ids", [])) if results else set()
-            
-            # Générer un nouvel ID jusqu'à ce qu'il soit unique
-            while True:
-                new_id = str(uuid.uuid4())
-                if new_id not in existing_ids:
-                    return new_id
-        except Exception as e:
-            # En cas d'erreur, retourner simplement un UUID
-            print(f"Erreur lors de la génération d'un ID unique: {e}")
-            return str(uuid.uuid4())
+        import uuid
+        return str(uuid.uuid4())

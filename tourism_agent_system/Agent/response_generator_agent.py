@@ -14,119 +14,121 @@ class ResponseGeneratorAgent(Agent):
         self._llm = ollama.Client()
         self._model_config = self._config["model"]
         
-    def generate_response(self, slots: Dict[str, Any], intent: str, emotion: str = None) -> str:
+    def generate_response(self, message: str, emotion: str, intent: str, slots: Dict[str, Any]) -> str:
         """
-        Génère une réponse finale basée sur les informations disponibles et l'émotion de l'utilisateur.
-
+        Génère une réponse finale basée sur toutes les informations disponibles.
+        
         Args:
-            slots (Dict[str, Any]): Les informations disponibles (slots)
+            message (str): Le message de l'utilisateur
+            emotion (str): L'émotion détectée
             intent (str): L'intention détectée
-            emotion (str, optional): L'émotion détectée dans le message de l'utilisateur
+            slots (Dict[str, Any]): Les slots extraits
             
         Returns:
-            str: Une réponse contextuelle et utile
+            str: La réponse finale
         """
         try:
-            # Construire le prompt pour le LLM
             prompt = [
-                {"role": "system", "content": """Vous êtes un assistant touristique expert qui génère des réponses finales.
-                Votre tâche est de fournir une réponse complète et utile basée sur toutes les informations disponibles,
-                en adaptant votre ton à l'émotion de l'utilisateur.
-
+                {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
+                Votre tâche est de fournir une réponse finale basée sur toutes les informations disponibles.
+                
                 Instructions:
-                1. Utilisez un ton adapté à l'émotion de l'utilisateur:
-                   - Si l'utilisateur est heureux: soyez enthousiaste et positif
-                   - Si l'utilisateur est frustré: soyez empathique et rassurant
-                   - Si l'utilisateur est neutre: soyez professionnel et amical
-                   - Si l'utilisateur est triste: soyez compatissant et encourageant
+                1. Adaptez votre ton à l'émotion de l'utilisateur
                 2. Soyez concis et direct
                 3. Ne répétez pas les informations déjà connues
                 4. Proposez des suggestions pertinentes
                 5. Terminez par une question ouverte pour continuer la conversation
                 6. Ne mentionnez pas que vous êtes un assistant
-                7. Ne faites pas de listes ou de sections explicites
-                8. Utilisez un langage naturel et conversationnel
-
-                Format de réponse:
-                Une réponse fluide et naturelle qui:
-                - Accueille l'utilisateur de manière personnalisée
-                - Fournit des informations pertinentes
-                - Propose des suggestions adaptées
-                - Termine par une question ouverte"""},
+                7. Utilisez un langage naturel et conversationnel"""},
                 {"role": "user", "content": f"""
+                Message: {message}
+                Émotion: {emotion}
                 Intention: {intent}
-                Émotion détectée: {emotion if emotion else "neutre"}
                 Informations disponibles:
-                {self._format_slots(slots)}
-
-                Générez une réponse naturelle et conversationnelle adaptée à l'émotion de l'utilisateur."""}
+                - Localisation: {slots.get('location')}
+                - Type de cuisine: {slots.get('food_type')}
+                - Budget: {slots.get('budget')}
+                - Heure: {slots.get('time')}
+                
+                Génère une réponse finale qui prend en compte toutes ces informations."""}
             ]
-
-            # Obtenir la réponse du LLM
+            
             response = self._get_llm_response(prompt)
             return response.strip()
             
         except Exception as e:
-            return f"Désolé, je n'ai pas pu générer une réponse appropriée. Erreur: {str(e)}"
+            print(f"Erreur lors de la génération de la réponse: {e}")
+            return "Désolé, je n'ai pas pu générer une réponse appropriée. Veuillez réessayer."
 
-    def generate_question(self, missing_slot: str, filled_slots: Dict[str, Any], emotion: str = None) -> str:
+    def generate_question(self, missing_slots: List[str], filled_slots: Dict[str, Any], message: str, emotion: str) -> str:
         """
-        Génère une question naturelle pour obtenir un slot manquant.
+        Génère une question naturelle pour obtenir les informations manquantes.
 
         Args:
-            missing_slot (str): Le slot manquant à demander
+            missing_slots (List[str]): Liste des slots manquants
             filled_slots (Dict[str, Any]): Les slots déjà remplis
-            emotion (str, optional): L'émotion détectée dans le message de l'utilisateur
+            message (str): Le message de l'utilisateur
+            emotion (str): L'émotion détectée
             
         Returns:
-            str: Une question naturelle pour obtenir le slot manquant
+            str: Une question naturelle
         """
         try:
-            # Construire le prompt pour le LLM
+            # Construire le contexte pour le LLM
+            slot_descriptions = {
+                "location": "la ville ou le lieu",
+                "food_type": "le type de cuisine",
+                "budget": "le budget",
+                "time": "l'horaire"
+            }
+            
+            missing_descriptions = [slot_descriptions[slot] for slot in missing_slots]
+            
             prompt = [
-                {"role": "system", "content": """Vous êtes un assistant touristique expert en communication naturelle.
-                Votre tâche est de formuler une question pour obtenir une information manquante,
-                en adaptant votre ton à l'émotion de l'utilisateur.
-
-                Instructions:
-                1. Utilisez un ton adapté à l'émotion de l'utilisateur:
-                   - Si l'utilisateur est heureux: soyez enthousiaste et positif
-                   - Si l'utilisateur est frustré: soyez empathique et rassurant
-                   - Si l'utilisateur est neutre: soyez professionnel et amical
-                   - Si l'utilisateur est triste: soyez compatissant et encourageant
-                2. Formulez une seule question claire et naturelle
-                3. Ne mentionnez pas que vous êtes un assistant
-                4. Ne faites pas référence aux "slots" ou "informations"
-                5. Adaptez la question au contexte et aux informations déjà connues
-                6. Utilisez un langage conversationnel et naturel
-
+                {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
+                Votre tâche est de poser une question naturelle pour obtenir les informations manquantes nécessaires pour faire une recommandation.
+                
+                Instructions importantes:
+                1. Adaptez votre ton à l'émotion de l'utilisateur
+                2. Posez UNE SEULE question claire et naturelle
+                3. Ne donnez PAS d'exemples de réponses possibles
+                4. Ne mentionnez pas que vous êtes un assistant
+                5. Ne faites pas référence aux "slots" ou "informations manquantes"
+                6. Utilisez un langage conversationnel
+                7. Adaptez la question au contexte de la conversation
+                8. NE LISTEZ PAS les options possibles
+                9. Posez une question OUVERTE
+                10. NE DEMANDEZ PAS le nom du restaurant (vous devez le trouver)
+                11. Concentrez-vous sur les informations nécessaires pour faire une recommandation
+                
                 Exemples de bonnes questions:
-                - "Dans quelle ville souhaitez-vous dîner ?"
-                - "Quel type de cuisine préférez-vous ?"
-                - "Quel est votre budget pour cette activité ?"
-                - "Quand souhaitez-vous réserver ?"
-
+                - "Quel est votre budget pour ce repas ?"
+                - "À quelle heure souhaitez-vous dîner ?"
+                - "Dans quel quartier préférez-vous manger ?"
+                
                 Répondez uniquement avec la question, sans explications supplémentaires."""},
                 {"role": "user", "content": f"""
-                Émotion détectée: {emotion if emotion else "neutre"}
-                Information à demander: {self._get_slot_description(missing_slot)}
-                Informations déjà connues:
-                {self._format_slots(filled_slots)}
-
-                Générez une question naturelle pour obtenir cette information."""}
+                Message de l'utilisateur: {message}
+                Émotion détectée: {emotion}
+                
+                Ce que nous savons déjà:
+                {self._format_known_slots(filled_slots)}
+                
+                Information(s) à obtenir: {', '.join(missing_descriptions)}
+                
+                Générez une question naturelle pour obtenir ces informations."""}
             ]
-
-            # Obtenir la réponse du LLM
+            
             response = self._get_llm_response(prompt)
             return response.strip()
             
         except Exception as e:
             print(f"Erreur lors de la génération de la question: {e}")
-            return f"Pouvez-vous me préciser {self._get_slot_description(missing_slot)} ?"
-        
-    def _format_slots(self, slots: Dict[str, Any]) -> str:
+            return "Pouvez-vous me donner plus d'informations ?"
+            
+    def _format_known_slots(self, slots: Dict[str, Any]) -> str:
         """
-        Formate les slots pour l'affichage.
+        Formate les slots connus pour l'affichage.
         
         Args:
             slots (Dict[str, Any]): Les slots à formater
@@ -139,8 +141,8 @@ class ResponseGeneratorAgent(Agent):
             if value:
                 description = self._get_slot_description(key)
                 formatted.append(f"- {description}: {value}")
-        return "\n".join(formatted) if formatted else "Aucune information disponible"
-
+        return "\n".join(formatted) if formatted else "Aucune information connue"
+        
     def _get_slot_description(self, slot: str) -> str:
         """
         Retourne la description d'un slot.
@@ -153,11 +155,9 @@ class ResponseGeneratorAgent(Agent):
         """
         slot_descriptions = {
             "location": "la ville ou le lieu",
-            "food_type": "le type de cuisine (traditionnelle, moderne, végétarienne, asiatique, italienne, française)",
-            "budget": "le niveau de prix (budget, moyen, luxe)",
-            "time": "le moment (ce soir, demain, ce week-end, déjeuner, dîner)",
-            "activity_type": "le type d'activité (culturelle, sportive, gastronomique, etc.)",
-            "date": "la date ou la période"
+            "food_type": "le type de cuisine",
+            "budget": "le budget",
+            "time": "l'horaire"
         }
         return slot_descriptions.get(slot, slot)
         
@@ -188,7 +188,7 @@ class ResponseGeneratorAgent(Agent):
                 return "Désolé, je n'ai pas pu générer une réponse appropriée. Format de réponse inattendu."
         except Exception as e:
             return "Désolé, je n'ai pas pu générer une réponse appropriée. Veuillez réessayer."
-            
+        
     def run(self, message: str, emotions: List[str], context: Optional[Dict] = None) -> str:
         """
         Génère une réponse en fonction du message et des émotions.
@@ -205,12 +205,6 @@ class ResponseGeneratorAgent(Agent):
             prompt = self._build_prompt(message, emotions, context)
             response = self._get_llm_response(prompt)
             final_response = self._parse_response(response)
-            
-            # Debug pour indiquer si la réponse est finale ou une question
-            if "?" in final_response:
-                print("[DEBUG] La réponse est une question")
-            else:
-                print("[DEBUG] La réponse est finale")
                 
             return final_response
             

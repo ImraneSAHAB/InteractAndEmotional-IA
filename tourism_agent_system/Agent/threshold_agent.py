@@ -34,13 +34,17 @@ class ThresholdAgent(Agent):
                 - 'filled_slots': les slots remplis
         """
         # Vérifier les slots manquants
-        missing_slots = [
-            slot for slot in required_slots
-            if slot not in filled_slots or not filled_slots.get(slot)
-        ]
+        missing_slots = []
+        for slot in required_slots:
+            # Vérifier si le slot existe et a une valeur non-nulle
+            if slot not in filled_slots or filled_slots.get(slot) is None or filled_slots.get(slot) == "":
+                missing_slots.append(slot)
+
+        # Vérifier si tous les slots requis sont remplis
+        is_complete = len(missing_slots) == 0
 
         return {
-            "is_complete": len(missing_slots) == 0,
+            "is_complete": is_complete,
             "missing_slots": missing_slots,
             "intent": intent,
             "filled_slots": filled_slots
