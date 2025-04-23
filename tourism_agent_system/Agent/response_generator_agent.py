@@ -28,30 +28,50 @@ class ResponseGeneratorAgent(Agent):
             str: La réponse finale
         """
         try:
-            prompt = [
-                {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
-                Votre tâche est de fournir une réponse finale basée sur toutes les informations disponibles.
-                
-                Instructions:
-                1. Adaptez votre ton à l'émotion de l'utilisateur
-                2. Soyez concis et direct
-                3. Ne répétez pas les informations déjà connues
-                4. Proposez des suggestions pertinentes
-                5. Terminez par une question ouverte pour continuer la conversation
-                6. Ne mentionnez pas que vous êtes un assistant
-                7. Utilisez un langage naturel et conversationnel"""},
-                {"role": "user", "content": f"""
-                Message: {message}
-                Émotion: {emotion}
-                Intention: {intent}
-                Informations disponibles:
-                - Localisation: {slots.get('location')}
-                - Type de cuisine: {slots.get('food_type')}
-                - Budget: {slots.get('budget')}
-                - Heure: {slots.get('time')}
-                
-                Génère une réponse finale qui prend en compte toutes ces informations."""}
-            ]
+            # Gérer les salutations différemment
+            if intent == "salutation":
+                prompt = [
+                    {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants, des hôtels et des activités.
+                    Votre tâche est de présenter vos services de manière naturelle et conversationnelle.
+                    
+                    Instructions:
+                    1. Présentez brièvement les services que vous proposez (recherche de restaurants, hôtels, activités)
+                    2. Demandez à l'utilisateur ce qu'il souhaite faire
+                    3. Soyez concis et direct
+                    4. Utilisez un langage naturel et conversationnel
+                    5. Ne mentionnez pas que vous êtes un assistant
+                    6. Adaptez votre ton à l'émotion de l'utilisateur"""},
+                    {"role": "user", "content": f"""
+                    Message: {message}
+                    Émotion: {emotion}
+                    
+                    Présentez vos services et demandez à l'utilisateur ce qu'il souhaite faire."""}
+                ]
+            else:
+                prompt = [
+                    {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
+                    Votre tâche est de fournir une réponse finale basée sur toutes les informations disponibles.
+                    
+                    Instructions:
+                    1. Adaptez votre ton à l'émotion de l'utilisateur
+                    2. Soyez concis et direct
+                    3. Ne répétez pas les informations déjà connues
+                    4. Proposez des suggestions pertinentes
+                    5. Terminez par une question ouverte pour continuer la conversation
+                    6. Ne mentionnez pas que vous êtes un assistant
+                    7. Utilisez un langage naturel et conversationnel"""},
+                    {"role": "user", "content": f"""
+                    Message: {message}
+                    Émotion: {emotion}
+                    Intention: {intent}
+                    Informations disponibles:
+                    - Localisation: {slots.get('location')}
+                    - Type de cuisine: {slots.get('food_type')}
+                    - Budget: {slots.get('budget')}
+                    - Heure: {slots.get('time')}
+                    
+                    Génère une réponse finale qui prend en compte toutes ces informations."""}
+                ]
             
             response = self._get_llm_response(prompt)
             return response.strip()

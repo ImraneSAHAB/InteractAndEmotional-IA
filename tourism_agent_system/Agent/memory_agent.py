@@ -229,46 +229,16 @@ class MemoryAgent(Agent):
         Efface la mémoire et réinitialise ChromaDB.
         """
         try:
-            # Fermer la connexion actuelle
-            self._chroma_client = None
-            self._collection = None
-            
-            # Supprimer complètement le répertoire de la base de données
-            base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            chroma_db_path = os.path.join(base_path, "tourism_agent_system", "chroma_db")
-            
-            if os.path.exists(chroma_db_path):
-                import shutil
+            # Supprimer la collection existante
+            if self._collection:
                 try:
-                    # Essayer de supprimer le répertoire
-                    shutil.rmtree(chroma_db_path)
-                except PermissionError:
-                    # Si échec, essayer de supprimer les fichiers un par un
-                    for root, dirs, files in os.walk(chroma_db_path, topdown=False):
-                        for name in files:
-                            try:
-                                os.remove(os.path.join(root, name))
-                            except:
-                                pass
-                        for name in dirs:
-                            try:
-                                os.rmdir(os.path.join(root, name))
-                            except:
-                                pass
-                    try:
-                        os.rmdir(chroma_db_path)
-                    except:
-                        pass
-            
-            # Recréer le répertoire
-            os.makedirs(chroma_db_path, exist_ok=True)
-            
-            # Réinitialiser le client ChromaDB
-            self._chroma_client = chromadb.PersistentClient(path=chroma_db_path)
-            self._collection = self._chroma_client.get_or_create_collection(
-                name="conversations",
-                metadata={"hnsw:space": "cosine"}
-            )
+                    # Récupérer tous les IDs de la collection
+                    results = self._collection.get()
+                    if results and "ids" in results:
+                        # Supprimer tous les documents de la collection
+                        self._collection.delete(ids=results["ids"])
+                except Exception as e:
+                    print(f"Erreur lors de la suppression des documents: {e}")
             
             # Réinitialiser les attributs
             self._messages = []
