@@ -2,9 +2,10 @@ from Agent import Agent
 from memory_agent import MemoryAgent
 from emotion_detection_agent import EmotionDetectionAgent
 from response_generator_agent import ResponseGeneratorAgent
+from threshold_agent import ThresholdAgent
 import ollama
 from typing import Dict, Any, List, Optional
-from intent_detection_agent import intentDetectionAgent
+from intent_detection_agent import IntentDetectionAgent
 from dialogue_planner_agent import DialoguePlannerAgent
 import json
 
@@ -24,9 +25,10 @@ class AgentOrchestrator(Agent):
         # Instancier les agents auxiliaires
         self._memory_agent = MemoryAgent()                # A4: gère la mémoire
         self._emotion_agent = EmotionDetectionAgent()      # A3: détecte l'émotion
-        self._intent_agent = intentDetectionAgent()        # A5: extrait intent et slots
+        self._intent_agent = IntentDetectionAgent()        # A5: extrait intent et slots
         self._response_generator = ResponseGeneratorAgent()# A7: génère les réponses
         self._dialogue_planner = DialoguePlannerAgent()    # A6: planifie la question suivante
+        self._threshold_agent = ThresholdAgent()           # A8: vérifie les slots
         
     def process_message(self, message: str) -> Dict[str, Any]:
         """
@@ -36,8 +38,8 @@ class AgentOrchestrator(Agent):
           2. Chargement de l'historique
           3. Extraction d'intention et slots
           4. Recherche d'informations en mémoire si besoin
-          5. Calcul des slots manquants
-          6. Décision de poser une question, renvoyer info mémorisée ou générer réponse finale
+          5. Vérification des slots avec le ThresholdAgent
+          6. Décision de poser une question ou générer réponse finale
           7. Enregistrement de l'interaction dans la mémoire
           8. Retour du résultat
 
@@ -50,6 +52,7 @@ class AgentOrchestrator(Agent):
         try:
             # 1. Détecter les émotions dans le message
             emotions = self._emotion_agent.run(message)
+            current_emotion = emotions[0] if emotions else "neutre"
 
             # 2. Récupérer l'historique des conversations
             conversation_history = self._memory_agent.get_messages()
@@ -57,7 +60,13 @@ class AgentOrchestrator(Agent):
             # 3. Détecter l'intention et extraire les slots
             intent_result = self._intent_agent.run(message)
             intent = intent_result["intent"]  # ex: 'restaurant_search'
-            slots = intent_result["slots"]    # dict des slots extraits
+            new_slots = intent_result["slots"]    # dict des slots extraits
+
+            # 4. Fusionner les nouveaux slots avec les slots existants
+            current_slots = self._memory_agent._current_slots.copy()
+            for key, value in new_slots.items():
+                if value:  # Ne mettre à jour que si la nouvelle valeur n'est pas vide
+                    current_slots[key] = value
 
             # Si l'utilisateur demande une info déjà connue, chercher en mémoire
             found_information = None
@@ -69,57 +78,59 @@ class AgentOrchestrator(Agent):
                 if search_result["found"] and search_result["confidence"] in ["high", "medium"]:
                     found_information = search_result["information"]
 
-            # 4. Définir les slots requis par intention
+            # 5. Définir les slots requis par intention
             required_slots = {
                 "restaurant_search": ["location", "food_type", "budget", "time"],
                 "activity_search": ["location", "activity_type", "date"],
-                # ... autres intentions
+                "hotel_search": ["location", "date", "budget"]
             }
 
-            # 5. Calculer les slots manquants
-            missing_slots = [
-                slot for slot in required_slots.get(intent, [])
-                if slot not in slots or not slots[slot]
-            ]
+            # 6. Vérifier les slots avec le ThresholdAgent
+            threshold_result = self._threshold_agent.check_slots(
+                intent=intent,
+                filled_slots=current_slots,
+                required_slots=required_slots.get(intent, [])
+            )
 
-            # 6. Sélection de la réponse
-            if missing_slots:
-                # a) Question suivante selon slots manquants
-                response = self._dialogue_planner.get_next_question(
-                    intent,
-                    slots,
-                    required_slots[intent]
+            # 7. Sélection de la réponse
+            if threshold_result["is_complete"]:
+                # Générer la réponse finale
+                response = self._response_generator.generate_response(
+                    slots=threshold_result["filled_slots"],
+                    intent=threshold_result["intent"],
+                    emotion=current_emotion
                 )
-            elif found_information:
-                # b) Renvoyer l'information déjà mémorisée
-                response = f"D'après nos conversations précédentes, {found_information}"
             else:
-                # c) Générer la réponse finale avec les slots disponibles
-                response = self._response_generator.generate_response(slots, intent)
+                # Générer la prochaine question
+                response = self._response_generator.generate_question(
+                    missing_slot=threshold_result["missing_slots"][0],
+                    filled_slots=current_slots,
+                    emotion=current_emotion
+                )
 
-            # 7. Sauvegarder l'interaction
+            # 8. Sauvegarder l'interaction
             self._memory_agent.add_message(
                 role="user",
                 content=message,
-                emotion=emotions[0] if emotions else "",
-                slots=slots,
+                emotion=current_emotion,
+                slots=current_slots,
                 intent=intent
             )
             self._memory_agent.add_message(
                 role="assistant",
                 content=response,
                 emotion="",  # Pas d'émotion pour l'assistant
-                slots=slots,
+                slots=current_slots,
                 intent=intent
             )
 
-            # 8. Retourner le résultat structuré
+            # 9. Retourner le résultat structuré
             return {
                 "success": True,
                 "response": response,
                 "context": conversation_history,
                 "emotions": emotions,
-                "slots": slots,
+                "slots": current_slots,
                 "intent": intent,
                 "found_information": found_information
             }

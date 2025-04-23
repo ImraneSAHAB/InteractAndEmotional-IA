@@ -56,6 +56,12 @@
             "role": "Orienteur de la conversation",
             "goal": "Choisir la prochaine question à poser à l'utilisateur en fonction des slots manquants",
             "backstory": "Expert en planification conversationnelle, capable de guider intelligemment l'échange pour collecter toutes les informations nécessaires à une réponse complète"
+        },
+        "threshold": {
+            "name": "Vérificateur",
+            "role": "Vérificateur de complétude",
+            "goal": "Vérifier si toutes les informations nécessaires sont disponibles avant de générer une réponse finale",
+            "backstory": "Expert en validation de données, capable de s'assurer que toutes les informations requises sont présentes avant de procéder"
         }
     }
 } 

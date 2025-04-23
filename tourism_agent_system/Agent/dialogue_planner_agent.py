@@ -2,6 +2,8 @@
 
 from Agent import Agent
 from typing import Dict, Any, List
+import ollama
+import json
 
 class DialoguePlannerAgent(Agent):
     """
@@ -13,69 +15,132 @@ class DialoguePlannerAgent(Agent):
 
     def __init__(self, name: str = "dialogue_planner"):
         super().__init__(name)
-        # Dictionnaire de templates pour les questions, basé sur les slots
-        self._slot_questions: Dict[str, str] = {
-            "location": "Dans quelle ville ou région recherchez-vous ?",
-            "food_type": "Quel type de cuisine vous intéresse ?",
-            "budget": "Quel budget prévoyez-vous pour le repas ?",
-            "time": "À quelle heure prévoyez-vous d'y aller ?",
-            "activity_type": "Quel type d'activité aimeriez-vous faire ?",
-            "date": "Préférez-vous une date spécifique pour cela ?",
-            "price_range": "Quelle gamme de prix recherchez-vous ?"
+        self._llm = ollama.Client()
+        self._model_config = self._config["model"]
+        
+        # Dictionnaire des descriptions des slots
+        self._slot_descriptions = {
+            "location": "la ville ou le lieu",
+            "food_type": "le type de cuisine (traditionnelle, moderne, végétarienne, asiatique, italienne, française)",
+            "budget": "le niveau de prix (budget, moyen, luxe)",
+            "time": "le moment (ce soir, demain, ce week-end, déjeuner, dîner)",
+            "activity_type": "le type d'activité (culturelle, sportive, gastronomique, etc.)",
+            "date": "la date ou la période"
         }
-
-    def run(
-        self,
-        intent: str,
-        filled_slots: Dict[str, Any],
-        required_slots: Dict[str, List[str]]
-    ) -> str:
-        """
-        Détermine la prochaine question pertinente à poser en fonction des slots manquants.
-
-        Args:
-            intent (str): L'intention détectée (ex: restaurant_search).
-            filled_slots (Dict[str, Any]): Dictionnaire des slots déjà remplis.
-            required_slots (Dict[str, List[str]]): Dictionnaire des intentions vers leurs slots requis.
-
-        Returns:
-            str: La question naturelle la plus pertinente à poser pour combler les informations manquantes.
-        """
-        # Récupérer la liste des slots requis pour cette intention
-        slots_list = required_slots.get(intent, [])
-
-        # Déterminer les slots manquants
-        missing_slots = [
-            slot for slot in slots_list
-            if slot not in filled_slots or not filled_slots.get(slot)
-        ]
-
-        # Pour chaque slot manquant, rechercher une question prédéfinie
-        for slot in missing_slots:
-            if slot in self._slot_questions:
-                return self._slot_questions[slot]
-
-        # Si aucun slot manquant n'est couvert, retourner une question générique
-        return "Pouvez-vous fournir plus de détails sur votre demande ?"
 
     def get_next_question(
         self,
         intent: str,
         filled_slots: Dict[str, Any],
-        required_slots: Any
+        required_slots: List[str]
     ) -> str:
         """
-        Alias pour run(), accepte aussi une liste de slots requis.
+        Génère la prochaine question à poser en fonction des slots manquants.
+
+        Args:
+            intent (str): L'intention détectée (ex: restaurant_search).
+            filled_slots (Dict[str, Any]): Dictionnaire des slots déjà remplis.
+            required_slots (List[str]): Liste des slots requis pour cette intention.
+
+        Returns:
+            str: La question naturelle à poser pour obtenir les informations manquantes.
+        """
+        # Déterminer les slots manquants
+        missing_slots = [
+            slot for slot in required_slots
+            if slot not in filled_slots or not filled_slots.get(slot)
+        ]
+
+        if not missing_slots:
+            return "Pouvez-vous me donner plus de détails sur votre demande ?"
+
+        # Construire le prompt pour générer la question
+        prompt = self._build_question_prompt(intent, missing_slots, filled_slots)
+        
+        try:
+            # Obtenir la réponse du LLM
+            response = self._llm.chat(
+                model=self._model_config["name"],
+                messages=prompt,
+                options={
+                    "temperature": 0.7,
+                    "max_tokens": 100
+                }
+            )
+            
+            # Nettoyer et retourner la réponse
+            question = response["message"]["content"].strip()
+            if question.startswith('"') and question.endswith('"'):
+                question = question[1:-1]
+            return question
+            
+        except Exception as e:
+            print(f"Erreur lors de la génération de la question: {e}")
+            # Retourner une question par défaut
+            return f"Pouvez-vous me préciser {self._slot_descriptions.get(missing_slots[0], 'cette information')} ?"
+
+    def _build_question_prompt(
+        self,
+        intent: str,
+        missing_slots: List[str],
+        filled_slots: Dict[str, Any]
+    ) -> List[Dict[str, str]]:
+        """
+        Construit le prompt pour générer une question naturelle.
 
         Args:
             intent (str): L'intention détectée.
+            missing_slots (List[str]): Liste des slots manquants.
             filled_slots (Dict[str, Any]): Slots déjà remplis.
-            required_slots (Union[Dict[str, List[str]], List[str]]): Soit dict intent->slots, soit liste de slots pour l'intent.
 
         Returns:
-            str: Prochaine question.
+            List[Dict[str, str]]: Le prompt formaté.
         """
-        # Si required_slots est une liste, l'envelopper dans un dict
-        if isinstance(required_slots, list):
-            required_slots = {intent: required_slots}
-        return self.run(intent, filled_slots, required_slots)
+        # Construire la description du contexte
+        context = []
+        if filled_slots:
+            context.append("Informations déjà connues:")
+            for slot, value in filled_slots.items():
+                if value:
+                    context.append(f"- {self._slot_descriptions.get(slot, slot)}: {value}")
+        
+        # Construire la liste des informations manquantes
+        missing_info = [
+            f"- {self._slot_descriptions.get(slot, slot)}"
+            for slot in missing_slots
+        ]
+
+        system_prompt = """Vous êtes un assistant touristique expert en communication naturelle. 
+Votre tâche est de formuler une question unique et naturelle pour obtenir les informations manquantes.
+
+Instructions:
+1. Formulez une seule question claire et naturelle
+2. Utilisez un ton amical et professionnel
+3. Ne mentionnez pas que vous êtes un assistant
+4. Ne faites pas référence aux "slots" ou "informations"
+5. Adaptez la question au contexte et aux informations déjà connues
+6. Utilisez un langage conversationnel et naturel
+7. Si plusieurs informations sont manquantes, choisissez la plus pertinente à demander en premier
+
+Exemples de bonnes questions:
+- "Dans quelle ville souhaitez-vous dîner ?"
+- "Quel type de cuisine préférez-vous ?"
+- "Quel est votre budget pour cette activité ?"
+- "Quand souhaitez-vous réserver ?"
+
+Répondez uniquement avec la question, sans explications supplémentaires."""
+
+        user_prompt = f"""Contexte de la conversation:
+Intention: {intent}
+
+{chr(10).join(context)}
+
+Informations manquantes:
+{chr(10).join(missing_info)}
+
+Générez une question naturelle pour obtenir ces informations manquantes."""
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]

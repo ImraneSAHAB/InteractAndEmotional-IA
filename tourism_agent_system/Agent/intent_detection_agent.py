@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional
 import re
 import json
 
-class intentDetectionAgent(Agent):
+class IntentDetectionAgent(Agent):
     """
     Agent pour détecter l'intention et extraire les slots remplis ou manquants
     """
@@ -243,10 +243,10 @@ Slots:
         lines = response.strip().splitlines()
         intent = None
         slots = {
-            "location": "",
-            "food_type": "",
-            "budget": "",
-            "time": ""
+            "location": None,
+            "food_type": None,
+            "budget": None,
+            "time": None
         }
 
         for line in lines:
@@ -260,7 +260,8 @@ Slots:
                     # Supprimer les guillemets si présents
                     value = value.strip('"')
                     if key in slots:
-                        slots[key] = value if value else ""
+                        # Convertir les valeurs vides en None
+                        slots[key] = value if value else None
 
         if intent not in self.VALID_INTENTS and intent != "unknown":
             intent = "unknown"

@@ -11,16 +11,6 @@ class EmotionDetectionAgent(Agent):
     # Liste des émotions valides
     VALID_EMOTIONS = ["joie", "tristesse", "colère", "peur", "surprise", "dégoût", "neutre"]
     
-    # Mots-clés associés à chaque émotion
-    EMOTION_KEYWORDS = {
-        "tristesse": ["solitude", "isolé", "triste", "malheureux", "déprimé", "chagrin", "peine"],
-        "joie": ["heureux", "content", "joie", "heureux", "satisfait", "enthousiaste", "excitant", "génial"],
-        "colère": ["fâché", "colère", "énervé", "frustré", "TOUT LE TEMPS", "TOUJOURS", "jamais", "insupportable"],
-        "peur": ["peur", "anxieux", "inquiet", "stressé", "paniqué", "terrifié", "appréhension", "angoisse"],
-        "surprise": ["surpris", "étonné", "stupéfait", "incroyable", "impensable", "inouï", "extraordinaire"],
-        "dégoût": ["dégoûté", "répugnant", "écœuré", "horrible", "détestable", "méprisable", "insupportable"]
-    }
-    
     def __init__(self, name: str = "emotion_detector"):
         super().__init__(name)
         self._llm = ollama.Client()
@@ -41,16 +31,11 @@ class EmotionDetectionAgent(Agent):
             List[str]: Liste des émotions détectées
         """
         try:
-            # Construire le prompt pour la détection d'émotion
             prompt = self._build_prompt(message)
-            
-            # Obtenir la réponse du LLM
             response = self._get_llm_response(prompt)
-            
-            # Analyser la réponse pour extraire les émotions
             emotions = self._parse_emotions(response)
             
-            return emotions
+            return emotions if emotions else ["neutre"]
             
         except Exception as e:
             print(f"Erreur lors de la détection d'émotion: {e}")
@@ -66,7 +51,7 @@ class EmotionDetectionAgent(Agent):
         Returns:
             List[Dict[str, str]]: Le prompt formaté
         """
-        system_message = """Vous êtes un expert en analyse d'émotions. Votre tâche est de détecter TOUTES les émotions présentes dans un message avec précision et nuance.
+        system_message = """Vous êtes un expert en analyse d'émotions. Votre tâche est de détecter l'émotion PRINCIPALE dans un message avec précision.
 
         Voici les émotions possibles avec leurs caractéristiques détaillées :
         
@@ -79,13 +64,15 @@ class EmotionDetectionAgent(Agent):
         - neutre : absence d'émotion particulière, équilibre émotionnel, calme, sérénité
         
         Analysez attentivement le message en considérant :
-        1. Le vocabulaire utilisé (mots émotionnels, intensité)
-        2. Le contexte du message
-        3. Les expressions et formulations
-        4. Les éventuelles émotions secondaires ou contradictoires
+        1. Le contexte global du message
+        2. Le ton et le style d'écriture
+        3. Les expressions idiomatiques et le langage figuré
+        4. Les sous-entendus et implications
+        5. La structure et la ponctuation
+        6. Les références culturelles
         
-        Répondez avec la liste des émotions détectées, séparées par des virgules, en minuscules.
-        Exemple: "joie, surprise" ou "tristesse, colère" ou "neutre"
+        Répondez avec UNE SEULE émotion, en minuscules.
+        Exemple: "joie" ou "tristesse" ou "neutre"
         """
             
         return [
@@ -124,25 +111,11 @@ class EmotionDetectionAgent(Agent):
         Returns:
             List[str]: Liste des émotions détectées
         """
-        # Nettoyer et diviser la réponse
-        emotions = [e.strip().lower() for e in response.split(",")]
+        # Nettoyer la réponse
+        emotion = response.strip().lower()
         
-        # Filtrer pour ne garder que les émotions valides
-        valid_detected_emotions = [e for e in emotions if e in self.VALID_EMOTIONS]
+        # Vérifier si l'émotion est valide
+        if emotion in self.VALID_EMOTIONS:
+            return [emotion]
         
-        # Si aucune émotion valide n'est détectée, essayer d'inférer l'émotion à partir du message
-        if not valid_detected_emotions:
-            detected_emotions = []
-            
-            # Vérifier les mots-clés pour chaque émotion
-            for emotion, keywords in self.EMOTION_KEYWORDS.items():
-                if any(keyword.lower() in response.lower() for keyword in keywords):
-                    detected_emotions.append(emotion)
-            
-            # Si aucune émotion n'est détectée, retourner neutre
-            if not detected_emotions:
-                return ["neutre"]
-            
-            return detected_emotions
-        
-        return valid_detected_emotions
+        return ["neutre"]
