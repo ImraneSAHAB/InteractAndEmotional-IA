@@ -57,6 +57,12 @@
             "goal": "Choisir la prochaine question à poser à l'utilisateur en fonction des slots manquants",
             "backstory": "Expert en planification conversationnelle, capable de guider intelligemment l'échange pour collecter toutes les informations nécessaires à une réponse complète"
         },
+        "searcher": {
+          "name": "Chercheur Web",
+          "role": "Chercheur Web",
+          "goal": "Effectuer des recherches web pertinentes et extraire les informations",
+          "backstory": "Expert en recherche web et en extraction d'informations"
+        },
         "threshold": {
             "name": "Vérificateur",
             "role": "Vérificateur de complétude",
