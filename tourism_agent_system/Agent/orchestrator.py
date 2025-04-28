@@ -7,6 +7,7 @@ import ollama
 from typing import Dict, Any, List, Optional
 from intent_detection_agent import IntentDetectionAgent
 from dialogue_planner_agent import DialoguePlannerAgent
+from search_agent import SearchAgent
 import json
 
 class AgentOrchestrator(Agent):
@@ -29,6 +30,7 @@ class AgentOrchestrator(Agent):
         self._response_generator = ResponseGeneratorAgent()# A7: génère les réponses
         self._dialogue_planner = DialoguePlannerAgent()    # A6: planifie la question suivante
         self._threshold_agent = ThresholdAgent()           # A8: vérifie les slots
+        self._search_agent = SearchAgent()                 # A9: effectue les recherches web
         
     def process_message(self, message: str) -> Dict[str, Any]:
         """
@@ -59,55 +61,40 @@ class AgentOrchestrator(Agent):
 
             # 3. Détecter l'intention et extraire les slots
             intent_result = self._intent_agent.run(message)
-            intent = intent_result["intent"]  # ex: 'restaurant_search'
-            new_slots = intent_result["slots"]    # dict des slots extraits
-
-            # 4. Fusionner les nouveaux slots avec les slots existants
+            new_intent = intent_result["intent"]
+            new_slots = intent_result["slots"]
             current_slots = self._memory_agent._current_slots.copy()
             
-            # Vérifier si c'est une sélection de restaurant
-            is_selection = False
-            if intent == "restaurant_search":
-                # Utiliser le LLM pour détecter si c'est une sélection
-                prompt = [
-                    {"role": "system", "content": """Vous êtes un assistant qui analyse les messages des utilisateurs.
-                    Votre tâche est de déterminer si le message est une sélection de restaurant parmi des suggestions.
-                    
-                    Répondez uniquement par "oui" si c'est une sélection, "non" sinon.
-                    
-                    Exemples de sélections:
-                    - "Je choisis le premier"
-                    - "Je prends le Wagamama"
-                    - "Le premier restaurant"
-                    - "La deuxième option"
-                    
-                    Exemples de non-sélections:
-                    - "Je veux un restaurant chinois"
-                    - "Quels sont les restaurants disponibles ?"
-                    - "Je cherche un restaurant pas cher"
-                    """},
-                    {"role": "user", "content": f"Le message suivant est-il une sélection de restaurant ? : {message}"}
-                ]
-                
-                response = self._llm.chat(
-                    model=self._model_config["name"],
-                    messages=prompt,
-                    options={
-                        "temperature": 0.1,
-                        "max_tokens": 10
-                    }
-                )
-                
-                is_selection = "oui" in response["message"]["content"].lower()
-            
-            if is_selection:
-                # Conserver tous les slots précédents
-                pass
+            # Définir les slots requis par intention
+            required_slots = {
+                "restaurant_search": ["location", "food_type", "budget", "time"],
+                "activity_search": ["location", "activity_type", "date"],
+                "hotel_search": ["location", "date", "budget"],
+                "information_generale": ["location"]
+            }
+
+            # Vérifier si nous avons une intention en cours
+            current_intent = next((intent for intent, slots in required_slots.items() 
+                                 if any(current_slots.get(slot) for slot in slots)), None)
+
+            # Si nous avons une intention en cours et que tous les slots ne sont pas remplis
+            if current_intent and not all(current_slots.get(slot) for slot in required_slots[current_intent]):
+                # Conserver l'intention en cours
+                intent = current_intent
+                # Mettre à jour uniquement les slots manquants
+                current_slots.update({k: v for k, v in new_slots.items() 
+                                   if v and v.strip() and not current_slots.get(k)})
             else:
-                # Mettre à jour les slots avec les nouvelles valeurs
-                for key, value in new_slots.items():
-                    if value is not None:  # Mettre à jour même si la valeur est vide
-                        current_slots[key] = value
+                # Si aucune intention en cours ou tous les slots sont remplis, accepter la nouvelle intention
+                intent = new_intent
+                # Mettre à jour les slots en fonction de l'intention
+                if intent == "information_generale":
+                    # Pour les demandes d'information, extraire les informations du message
+                    current_slots = self._extract_info(message)
+                else:
+                    # Pour les autres intentions, mettre à jour tous les slots
+                    current_slots.update({k: v for k, v in new_slots.items() 
+                                       if v and v.strip()})
 
             # Si l'utilisateur demande une info déjà connue, chercher en mémoire
             found_information = None
@@ -119,13 +106,6 @@ class AgentOrchestrator(Agent):
                 if search_result["found"] and search_result["confidence"] in ["high", "medium"]:
                     found_information = search_result["information"]
 
-            # 5. Définir les slots requis par intention
-            required_slots = {
-                "restaurant_search": ["location", "food_type", "budget", "time"],
-                "activity_search": ["location", "activity_type", "date"],
-                "hotel_search": ["location", "date", "budget"]
-            }
-
             # 6. Vérifier les slots avec le ThresholdAgent
             threshold_result = self._threshold_agent.check_slots(
                 intent=intent,
@@ -133,21 +113,24 @@ class AgentOrchestrator(Agent):
                 required_slots=required_slots.get(intent, [])
             )
 
-            # 7. Sélection de la réponse
+            # 7. Générer la réponse appropriée
             if threshold_result["is_complete"]:
-                # Générer la réponse finale
+                # Effectuer une recherche web pour obtenir des informations à jour
+                search_query = f"{'restaurant' if intent == 'restaurant_search' else 'hôtel' if intent == 'hotel_search' else 'activité'} {current_slots.get('food_type', '')} à {current_slots.get('location', '')} {current_slots.get('budget', '')} adresse horaires d'ouverture"
+                search_results = self._search_agent.search_web(search_query)
+                
+                # Générer la réponse finale avec les résultats de recherche
                 response = self._response_generator.generate_response(
                     message=message,
                     emotion=current_emotion,
                     intent=intent,
-                    slots=current_slots
+                    slots=current_slots,
+                    search_results=search_results
                 )
             else:
                 # Vérifier tous les slots manquants
-                missing_slots = []
-                for slot in required_slots.get(intent, []):
-                    if not current_slots.get(slot):
-                        missing_slots.append(slot)
+                missing_slots = [slot for slot in required_slots.get(intent, []) 
+                               if not current_slots.get(slot)]
                 
                 # Générer la prochaine question
                 response = self._response_generator.generate_question(
@@ -157,7 +140,7 @@ class AgentOrchestrator(Agent):
                     emotion=current_emotion
                 )
 
-            # 8. Sauvegarder l'interaction
+            # 8. Sauvegarder l'interaction et mettre à jour les slots
             self._memory_agent.add_message(
                 role="user",
                 content=message,
@@ -172,6 +155,9 @@ class AgentOrchestrator(Agent):
                 slots=current_slots,
                 intent=intent
             )
+            
+            # Mettre à jour les slots dans la mémoire
+            self._memory_agent._current_slots = current_slots.copy()
 
             # 9. Retourner le résultat structuré
             return {
@@ -184,11 +170,11 @@ class AgentOrchestrator(Agent):
                 "found_information": found_information
             }
 
-        except Exception as e:
+        except Exception:
             # En cas d'erreur, retourner success=False avec le message
             return {
                 "success": False,
-                "error": str(e),
+                "error": "Une erreur est survenue",
                 "response": "Désolé, une erreur est survenue lors du traitement de votre message."
             }
 
@@ -213,6 +199,36 @@ class AgentOrchestrator(Agent):
 
     def clear_memory(self) -> None:
         """
-        Efface toute la mémoire de l'agent.
+        Efface toute la mémoire de l'agent et réinitialise les slots.
         """
         self._memory_agent.clear_memory()
+        # Réinitialiser les slots actuels
+        self._memory_agent._current_slots = {
+            "location": "",
+            "food_type": "",
+            "budget": "",
+            "time": "",
+        }
+
+    def _extract_info(self, message: str) -> Dict[str, str]:
+        """
+        Extrait les informations pertinentes d'un message en utilisant le LLM.
+        
+        Args:
+            message (str): Le message à analyser
+            
+        Returns:
+            Dict[str, str]: Dictionnaire contenant les informations extraites
+        """
+        try:
+            response = self._llm.chat(
+                model=self._model_config["name"],
+                messages=[
+                    {"role": "system", "content": "Extrayez les informations au format JSON: {\"establishment\": \"nom\", \"location\": \"lieu\"}"},
+                    {"role": "user", "content": message}
+                ],
+                options={"temperature": 0.1, "max_tokens": 200}
+            )
+            return json.loads(response["message"]["content"])
+        except Exception:
+            return {"establishment": "", "location": ""}

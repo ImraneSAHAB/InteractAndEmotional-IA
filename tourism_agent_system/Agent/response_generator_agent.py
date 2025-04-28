@@ -14,52 +14,27 @@ class ResponseGeneratorAgent(Agent):
         self._llm = ollama.Client()
         self._model_config = self._config["model"]
         
-    def generate_response(self, message: str, emotion: str, intent: str, slots: Dict[str, Any]) -> str:
+    def generate_response(self, message: str, emotion: str, intent: str, slots: Dict[str, Any], search_results: List[Dict[str, Any]] = None) -> str:
         """
-        Génère une réponse finale basée sur toutes les informations disponibles.
-        
-        Args:
-            message (str): Le message de l'utilisateur
-            emotion (str): L'émotion détectée
-            intent (str): L'intention détectée
-            slots (Dict[str, Any]): Les slots extraits
-            
-        Returns:
-            str: La réponse finale
+        Génère une réponse finale basée sur les informations disponibles.
         """
         try:
-            # Gérer les salutations différemment
-            if intent == "salutation":
-                prompt = [
-                    {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants, des hôtels et des activités.
-                    Votre tâche est de présenter vos services de manière naturelle et conversationnelle.
-                    
-                    Instructions:
-                    1. Présentez brièvement les services que vous proposez (recherche de restaurants, hôtels, activités)
-                    2. Demandez à l'utilisateur ce qu'il souhaite faire
-                    3. Soyez concis et direct
-                    4. Utilisez un langage naturel et conversationnel
-                    5. Ne mentionnez pas que vous êtes un assistant
-                    6. Adaptez votre ton à l'émotion de l'utilisateur"""},
-                    {"role": "user", "content": f"""
-                    Message: {message}
-                    Émotion: {emotion}
-                    
-                    Présentez vos services et demandez à l'utilisateur ce qu'il souhaite faire."""}
-                ]
-            else:
+            if intent == "restaurant_search":
                 prompt = [
                     {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
-                    Votre tâche est de fournir une réponse finale basée sur toutes les informations disponibles.
+                    Votre tâche est de fournir une réponse finale basée sur les informations vérifiées.
                     
                     Instructions:
-                    1. Adaptez votre ton à l'émotion de l'utilisateur
-                    2. Soyez concis et direct
-                    3. Ne répétez pas les informations déjà connues
-                    4. Proposez des suggestions pertinentes
-                    5. Terminez par une question ouverte pour continuer la conversation
-                    6. Ne mentionnez pas que vous êtes un assistant
-                    7. Utilisez un langage naturel et conversationnel"""},
+                    1. Ne mentionnez que les restaurants dont vous avez toutes les informations vérifiées
+                    2. Pour chaque restaurant, incluez uniquement :
+                       - Le nom exact
+                       - L'adresse complète et vérifiée
+                       - Les horaires d'ouverture
+                       - Le budget moyen
+                    3. Si vous n'avez pas toutes ces informations pour un restaurant, ne le mentionnez pas
+                    4. Ne faites pas de suppositions
+                    5. Soyez concis et direct
+                    6. Terminez par une question ouverte"""},
                     {"role": "user", "content": f"""
                     Message: {message}
                     Émotion: {emotion}
@@ -68,16 +43,38 @@ class ResponseGeneratorAgent(Agent):
                     - Localisation: {slots.get('location')}
                     - Type de cuisine: {slots.get('food_type')}
                     - Budget: {slots.get('budget')}
-                    - Heure: {slots.get('time')}
                     
-                    Génère une réponse finale qui prend en compte toutes ces informations."""}
+                    Résultats de recherche web:
+                    {json.dumps(search_results, indent=2) if search_results else "Aucun résultat de recherche disponible"}
+                    
+                    Génère une réponse qui ne mentionne que les restaurants dont vous avez toutes les informations vérifiées."""}
+                ]
+            else:
+                prompt = [
+                    {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
+                    Votre tâche est de fournir une réponse finale basée sur les informations disponibles.
+                    
+                    Instructions:
+                    1. Soyez concis et direct
+                    2. Ne faites pas de suppositions
+                    3. Si des informations sont manquantes, demandez-les
+                    4. Terminez par une question ouverte"""},
+                    {"role": "user", "content": f"""
+                    Message: {message}
+                    Émotion: {emotion}
+                    Intention: {intent}
+                    Informations disponibles:
+                    - Localisation: {slots.get('location')}
+                    - Type de cuisine: {slots.get('food_type')}
+                    - Budget: {slots.get('budget')}
+                    
+                    Génère une réponse appropriée."""}
                 ]
             
             response = self._get_llm_response(prompt)
             return response.strip()
             
-        except Exception as e:
-            print(f"Erreur lors de la génération de la réponse: {e}")
+        except Exception:
             return "Désolé, je n'ai pas pu générer une réponse appropriée. Veuillez réessayer."
 
     def generate_question(self, missing_slots: List[str], filled_slots: Dict[str, Any], message: str, emotion: str) -> str:
@@ -99,7 +96,7 @@ class ResponseGeneratorAgent(Agent):
                 "location": "la ville ou le lieu",
                 "food_type": "le type de cuisine",
                 "budget": "le budget",
-                "time": "l'horaire"
+                "time": "le moment de votre visite"
             }
             
             missing_descriptions = [slot_descriptions[slot] for slot in missing_slots]
@@ -120,6 +117,9 @@ class ResponseGeneratorAgent(Agent):
                 9. Posez une question OUVERTE
                 10. NE DEMANDEZ PAS le nom du restaurant (vous devez le trouver)
                 11. Concentrez-vous sur les informations nécessaires pour faire une recommandation
+                12. NE FAITES PAS de suppositions sur le moment (ne mentionnez pas "ce soir", "ce midi", etc.)
+                13. NE FAITES PAS de suppositions sur le budget (ne mentionnez pas "pas cher", "moyen", etc.)
+                14. NE FAITES PAS de suppositions sur le type de cuisine (ne mentionnez pas "français", "italien", etc.)
                 
                 Exemples de bonnes questions:
                 - "Quel est votre budget pour ce repas ?"
@@ -196,18 +196,13 @@ class ResponseGeneratorAgent(Agent):
                 model=self._model_config["name"],
                 messages=prompt,
                 options={
-                    "temperature": self._model_config["temperature"],
-                    "max_tokens": self._model_config["max_tokens"]
+                    "temperature": 0.1,
+                    "max_tokens": 200
                 }
             )
-            
-            # Vérifier si la réponse contient le contenu attendu
-            if "message" in response and "content" in response["message"]:
-                return response["message"]["content"]
-            else:
-                return "Désolé, je n'ai pas pu générer une réponse appropriée. Format de réponse inattendu."
-        except Exception as e:
-            return "Désolé, je n'ai pas pu générer une réponse appropriée. Veuillez réessayer."
+            return response["message"]["content"]
+        except Exception:
+            return "Désolé, je n'ai pas pu générer une réponse appropriée."
         
     def run(self, message: str, emotions: List[str], context: Optional[Dict] = None) -> str:
         """

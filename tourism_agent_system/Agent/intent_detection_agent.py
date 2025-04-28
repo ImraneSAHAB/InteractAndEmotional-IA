@@ -22,8 +22,6 @@ class IntentDetectionAgent(Agent):
             "food_type": "",
             "budget": "",
             "time": "",
-            "activity_type": "",
-            "date": ""
         }
 
     def run(self, message: str) -> Dict[str, Any]:
@@ -143,35 +141,6 @@ class IntentDetectionAgent(Agent):
             print(f"Erreur lors de l'extraction des slots : {str(e)}")
             # En cas d'erreur, retourner un dictionnaire avec des slots vides
             return {slot: "" for slot in required_slots[intent]}
-
-    def _merge_slots(self, llm_slots: Dict[str, Any], extracted_slots: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Fusionne les slots extraits par le LLM et par les patterns.
-
-        Args:
-            llm_slots (Dict[str, Any]): Slots extraits par le LLM
-            extracted_slots (Dict[str, Any]): Slots extraits par les patterns
-
-        Returns:
-            Dict[str, Any]: Slots fusionnés
-        """
-        merged = self._current_slots.copy()
-        
-        # Mettre à jour avec les slots du LLM
-        for key, value in llm_slots.items():
-            if value is not None:
-                merged[key] = value
-                
-        # Mettre à jour avec les slots extraits par les patterns
-        for key, value in extracted_slots.items():
-            if value is not None:
-                merged[key] = value
-                
-        # Mettre à jour les slots courants
-        self._current_slots = merged
-        
-        return merged
-
     def _build_prompt(self, message: str) -> List[Dict[str, str]]:
         """
         Construit le prompt d'analyse.
@@ -263,8 +232,6 @@ Slots:
             "food_type": None,
             "budget": None,
             "time": None,
-            "activity_type": None,
-            "date": None
         }
 
         for line in lines:

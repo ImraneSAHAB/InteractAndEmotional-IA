@@ -14,97 +14,71 @@ class SearchAgent(Agent):
 
     def __init__(self, name: str = "searcher"):
         super().__init__(name)
-        # Charger la configuration de recherche depuis le config.json
         self._search_config = self._config.get("search", {})
 
-    def run(self, query: str) -> List[Dict[str, Any]]:
-        """
-        Surcharge de la méthode run() pour effectuer directement la recherche.
-
-        Args:
-            query (str): La requête à rechercher.
-
-        Returns:
-            List[Dict[str, Any]]: Liste des résultats structurés.
-        """
-        return self.search_web(query)
-
     def search_web(self, query: str) -> List[Dict[str, Any]]:
-        """
-        Réalise une requête POST vers l'API de recherche configurée et retourne
-        une liste de résultats structurés.
-
-        Args:
-            query (str): La requête à rechercher.
-
-        Returns:
-            List[Dict[str, Any]]: Liste des résultats avec titre, snippet, url, source_type, published_date.
-        """
         try:
-            # Préparer la payload en mixant api_key et paramètres globaux
-            payload = {
-                "api_key": self._search_config.get("api_key", ""),
-                "query": query,
-                **{k: v for k, v in self._search_config.items() if k not in ["api_key"]}
-            }
+            if not self._search_config.get("api_key") or not self._search_config.get("url"):
+                return self._get_fallback_results(query)
+
             response = requests.post(
                 self._search_config.get("url", ""),
-                json=payload,
-                timeout=self._search_config.get("timeout", 15)
+                json={
+                    "api_key": self._search_config.get("api_key", ""),
+                    "query": query,
+                    "search_depth": "advanced",
+                    "include_answer": True
+                },
+                timeout=15
             )
-            response.raise_for_status()  # Lever une exception si le statut HTTP est une erreur
+            
+            response.raise_for_status()
             data = response.json()
+            
+            results = []
+            for r in data.get("results", []):
+                if self._is_valid_result(r):
+                    results.append({
+                        "title": r.get("title", ""),
+                        "snippet": r.get("content", ""),
+                        "url": r.get("url", ""),
+                        "score": r.get("score", 0)
+                    })
+                    if len(results) >= 3:
+                        break
+                        
+            return results if results else self._get_fallback_results(query)
 
-            # Vérifier que les données contiennent les champs attendus
-            if not isinstance(data, dict) or "results" not in data:
-                raise ValueError("La réponse de l'API est mal formatée ou ne contient pas de résultats.")
+        except Exception:
+            return self._get_fallback_results(query)
 
-            # Parser les résultats
-            results = self._parse_results(data)
-            if not results:
-                return [{
-                    "title": "Aucun résultat",
-                    "snippet": "Essayez de reformuler votre requête.",
-                    "url": "N/A",
-                    "source_type": "aucun"
-                }]
-            return results
-
-        except requests.exceptions.RequestException as e:
-            return [{
-                "title": "Erreur de connexion",
-                "snippet": f"Impossible de se connecter à l'API : {e}",
-                "url": "N/A",
-                "source_type": "erreur"
-            }]
-        except Exception as e:
-            return [{
-                "title": "Erreur",
-                "snippet": str(e),
-                "url": "N/A",
-                "source_type": "erreur"
-            }]
-
-    def _parse_results(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _is_valid_result(self, result: Dict[str, Any]) -> bool:
         """
-        Transforme la réponse brute de l'API en une liste de dicts normalisés.
+        Vérifie si un résultat est valide et fiable.
         """
-        results: List[Dict[str, Any]] = []
-        # Ajouter le résumé si présent
-        if data.get("answer"):
-            results.append({
-                "title": "Résumé",
-                "snippet": data["answer"],
-                "url": "API résumé",
-                "source_type": "résumé"
-            })
-        # Ajouter les résultats web
-        for r in data.get("results", [])[: self._search_config.get("max_results", 5)]:
-            results.append({
-                "title": r.get("title", ""),
-                "snippet": r.get("content", ""),
-                "url": r.get("url", ""),
-                "source_type": "web",
-                "published_date": r.get("published_date", "non disponible")
-            })
-        return results
+        if not all(result.get(field) for field in ["title", "content", "url"]):
+            return False
+            
+        if result.get("score", 0) < 0.5:
+            return False
+            
+        url = result.get("url", "").lower()
+        if not any(domain in url for domain in ["pagesjaunes.fr", "tripadvisor.fr"]):
+            return False
+            
+        content = result.get("content", "").lower()
+        if len(content) < 50 or "n'existe pas" in content or "n'existe plus" in content:
+            return False
+            
+        return True
+
+    def _get_fallback_results(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Génère des résultats de secours en cas d'échec.
+        """
+        return [{
+            "title": "Information non disponible",
+            "snippet": f"Je n'ai pas pu trouver d'informations fiables pour {query}. Je vous suggère de consulter directement le site web officiel ou de contacter l'établissement.",
+            "url": "N/A",
+            "score": 0
+        }]

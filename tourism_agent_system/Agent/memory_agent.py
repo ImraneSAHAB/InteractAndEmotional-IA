@@ -6,7 +6,6 @@ import chromadb
 from datetime import datetime
 import json
 import ollama
-import time
 import uuid
 
 # Ajouter le répertoire parent au chemin Python
@@ -26,8 +25,7 @@ class MemoryAgent(Agent):
         # Créer le chemin absolu pour ChromaDB dans tourism_agent_system
         base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         chroma_db_path = os.path.join(base_path, "tourism_agent_system", "chroma_db")
-        if not os.path.exists(chroma_db_path):
-            os.makedirs(chroma_db_path)
+        os.makedirs(chroma_db_path, exist_ok=True)
             
         # Initialiser ChromaDB avec le chemin absolu
         self._chroma_client = chromadb.PersistentClient(path=chroma_db_path)
@@ -118,41 +116,24 @@ class MemoryAgent(Agent):
             intent (str, optional): L'intention détectée
         """
         try:
-            # Créer le message
             message = {
                 "role": role,
-                "content": content
+                "content": content,
+                "emotion": emotion or "",
+                "intent": intent or ""
             }
-
-            # Ajouter l'émotion si disponible
-            if emotion:
-                message["emotion"] = emotion
-
-            # Ajouter l'intent si disponible
-            if intent:
-                message["intent"] = intent
-
-            # Ajouter le message à la liste
             self._messages.append(message)
-
-            # Mettre à jour la conversation courante
+            
             if role == "user":
                 self._current_conversation["user_message"] = content
-                self._current_conversation["emotion"] = emotion if emotion else ""
-                self._current_conversation["intent"] = intent if intent else ""
-                
-                # Mettre à jour les slots
+                self._current_conversation["emotion"] = emotion
+                self._current_conversation["intent"] = intent
                 if slots:
-                    for key, value in slots.items():
-                        if value is not None:  # Mettre à jour même si la valeur est vide
-                            self._current_conversation["slots"][key] = value
-                
+                    self._current_conversation["slots"].update({k: v for k, v in slots.items() if v})
             elif role == "assistant":
                 self._current_conversation["ai_message"] = content
-
-            # Si nous avons un message utilisateur et un message assistant, sauvegarder la conversation
-            if (self._current_conversation.get("user_message") is not None and 
-                self._current_conversation.get("ai_message") is not None):
+            
+            if self._current_conversation["user_message"] and self._current_conversation["ai_message"]:
                 self._save_conversation()
                 
         except Exception as e:
@@ -186,7 +167,7 @@ class MemoryAgent(Agent):
             )
 
             # Générer un ID unique pour le document
-            doc_id = self._generate_unique_id()
+            doc_id = str(uuid.uuid4())
             
             # Ajouter le document à la collection
             try:
@@ -303,133 +284,25 @@ class MemoryAgent(Agent):
             Dict[str, Any]: Les informations trouvées
         """
         try:
-            
-            # Construire le prompt pour le LLM
+            if not self._messages:
+                return {"found": False, "confidence": "low", "information": ""}
+                
             prompt = [
-                {"role": "system", "content": "Vous êtes un assistant qui analyse les conversations précédentes pour trouver des informations spécifiques."},
-                {"role": "user", "content": f"""
-                Recherchez dans les conversations suivantes des informations concernant: {query}
-                
-                Conversations:
-                {self._format_conversations_for_search()}
-                
-                Répondez uniquement avec les informations trouvées au format JSON:
-                {{
+                {"role": "system", "content": """Analysez l'historique des conversations pour trouver des informations pertinentes.
+                Répondez au format JSON:
+                {
                     "found": true/false,
-                    "information": "l'information trouvée",
-                    "confidence": "high/medium/low"
-                }}
-                
-                Si aucune information n'est trouvée, répondez avec:
-                {{
-                    "found": false,
-                    "information": "",
-                    "confidence": "low"
-                }}
-                """}
+                    "confidence": "high"/"medium"/"low",
+                    "information": "information trouvée"
+                }"""},
+                {"role": "user", "content": f"Recherchez dans l'historique: {query}\n\nHistorique:\n{json.dumps(self._messages, indent=2)}"}
             ]
             
-            # Obtenir la réponse du LLM
-            response = self._get_llm_response(prompt)
-            
-            # Parser la réponse
-            try:
-                # Nettoyer la réponse pour enlever les backticks et autres caractères non-JSON
-                cleaned_response = response.strip()
-                if cleaned_response.startswith("```"):
-                    cleaned_response = cleaned_response[3:]
-                if cleaned_response.endswith("```"):
-                    cleaned_response = cleaned_response[:-3]
-                cleaned_response = cleaned_response.strip()
-                
-                # Vérifier si la réponse est au format JSON
-                if cleaned_response.startswith("{") and cleaned_response.endswith("}"):
-                    result = json.loads(cleaned_response)
-                    return result
-                else:
-                    # Si ce n'est pas du JSON, créer un résultat par défaut
-                    print(f"La réponse n'est pas au format JSON: {cleaned_response}")
-                    
-                    # Essayer d'extraire des informations utiles de la réponse
-                    if "information" in cleaned_response.lower():
-                        # Chercher des informations entre guillemets
-                        import re
-                        info_matches = re.findall(r'"([^"]*)"', cleaned_response)
-                        if info_matches:
-                            return {
-                                "found": True,
-                                "information": info_matches[0],
-                                "confidence": "low"
-                            }
-                    
-                    return {"found": False, "information": "", "confidence": "low"}
-            except json.JSONDecodeError:
-                print(f"Erreur lors du décodage de la réponse: {response}")
-                return {"found": False, "information": "", "confidence": "low"}
-                
-        except Exception as e:
-            print(f"Erreur lors de la recherche dans les conversations: {e}")
-            return {"found": False, "information": "", "confidence": "low"}
-            
-    def _format_conversations_for_search(self) -> str:
-        """
-        Formate les conversations pour la recherche.
-        
-        Returns:
-            str: Les conversations formatées
-        """
-        formatted = ""
-        for i, message in enumerate(self._messages):
-            role = "Utilisateur" if message["role"] == "user" else "Assistant"
-            content = message["content"]
-            formatted += f"{role}: {content}\n"
-            
-            # Ajouter les métadonnées si disponibles
-            if "emotion" in message:
-                formatted += f"Émotion: {message['emotion']}\n"
-            if "intent" in message:
-                formatted += f"Intention: {message['intent']}\n"
-                
-            # Ajouter un séparateur entre les messages
-            if i < len(self._messages) - 1:
-                formatted += "---\n"
-                
-        return formatted
-        
-    def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
-        """
-        Obtient une réponse du LLM.
-        
-        Args:
-            prompt (List[Dict[str, str]]): Le prompt à envoyer au LLM
-            
-        Returns:
-            str: La réponse du LLM
-        """
-        try:
             response = self._llm.chat(
                 model=self._model_config["name"],
                 messages=prompt,
-                options={
-                    "temperature": self._model_config["temperature"],
-                    "max_tokens": self._model_config["max_tokens"]
-                }
+                options={"temperature": 0.1, "max_tokens": 200}
             )
-            
-            # Vérifier si la réponse contient le contenu attendu
-            if "message" in response and "content" in response["message"]:
-                return response["message"]["content"]
-            else:
-                return "Désolé, je n'ai pas pu générer une réponse appropriée. Format de réponse inattendu."
-        except Exception as e:
-            return "Désolé, je n'ai pas pu générer une réponse appropriée. Veuillez réessayer."
-
-    def _generate_unique_id(self) -> str:
-        """
-        Génère un ID unique pour un nouveau document.
-        
-        Returns:
-            str: Un ID unique
-        """
-        import uuid
-        return str(uuid.uuid4())
+            return json.loads(response["message"]["content"])
+        except Exception:
+            return {"found": False, "confidence": "low", "information": ""}
