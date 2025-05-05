@@ -1,5 +1,5 @@
 # emotion_detection_agent.py
-from Agent import Agent
+from base_agent import Agent
 import ollama
 from typing import Dict, List
 

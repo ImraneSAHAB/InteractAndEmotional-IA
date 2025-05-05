@@ -1,4 +1,4 @@
-from Agent import Agent
+from base_agent import Agent
 from memory_agent import MemoryAgent
 from emotion_detection_agent import EmotionDetectionAgent
 from response_generator_agent import ResponseGeneratorAgent
@@ -6,7 +6,6 @@ from threshold_agent import ThresholdAgent
 import ollama
 from typing import Dict, Any, List, Optional
 from intent_detection_agent import IntentDetectionAgent
-from dialogue_planner_agent import DialoguePlannerAgent
 from search_agent import SearchAgent
 import json
 
@@ -28,7 +27,6 @@ class AgentOrchestrator(Agent):
         self._emotion_agent = EmotionDetectionAgent()      # A3: détecte l'émotion
         self._intent_agent = IntentDetectionAgent()        # A5: extrait intent et slots
         self._response_generator = ResponseGeneratorAgent()# A7: génère les réponses
-        self._dialogue_planner = DialoguePlannerAgent()    # A6: planifie la question suivante
         self._threshold_agent = ThresholdAgent()           # A8: vérifie les slots
         self._search_agent = SearchAgent()                 # A9: effectue les recherches web
         

@@ -1,4 +1,4 @@
-from Agent import Agent
+from base_agent import Agent
 from orchestrator import AgentOrchestrator
 from typing import Dict, Any
 import time

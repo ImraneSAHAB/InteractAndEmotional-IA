@@ -1,4 +1,4 @@
-from Agent import Agent
+from base_agent import Agent
 import ollama
 from typing import Dict, Any, List, Optional
 import json
