@@ -1,4 +1,4 @@
-from Agent import Agent
+from .Agent import Agent
 import ollama
 from typing import Dict, Any, List, Optional
 import json
@@ -191,6 +191,7 @@ class ResponseGeneratorAgent(Agent):
         Returns:
             str: La réponse du LLM
         """
+        print("Prompt envoyé au LLM:")
         try:
             response = self._llm.chat(
                 model=self._model_config["name"],

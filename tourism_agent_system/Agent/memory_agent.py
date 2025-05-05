@@ -1,4 +1,4 @@
-from Agent import Agent
+from .Agent import Agent
 from typing import List, Dict, Any
 import sys
 import os

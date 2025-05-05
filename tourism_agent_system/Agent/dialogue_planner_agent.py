@@ -1,6 +1,6 @@
 # dialogue_planner_agent.py
 
-from Agent import Agent
+from .Agent import Agent
 from typing import Dict, Any, List
 import ollama
 import json

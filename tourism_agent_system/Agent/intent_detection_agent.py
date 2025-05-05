@@ -1,5 +1,5 @@
 # intent_detection_agent.py
-from Agent import Agent
+from .Agent import Agent
 import ollama
 from typing import Dict, Any, List, Optional
 import re

@@ -1,6 +1,6 @@
 {
     "model": {
-        "name": "mistral",
+        "name": "llama3",
         "temperature": 0.3,
         "max_tokens": 2000
     },

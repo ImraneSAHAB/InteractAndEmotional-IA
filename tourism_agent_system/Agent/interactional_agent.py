@@ -1,81 +1,70 @@
-from Agent import Agent
-from orchestrator import AgentOrchestrator
-from typing import Dict, Any
-import time
+import logging
+from typing import Optional
+from .Agent import Agent
+from .orchestrator import AgentOrchestrator
+
+logger = logging.getLogger(__name__)
 
 class InteractionalAgent(Agent):
     """
-    Agent qui gère les interactions avec l'utilisateur
+    Agent qui gère la boucle d'interaction avec l'utilisateur
     """
-    
-    def __init__(self, orchestrator: AgentOrchestrator = None, name: str = "interactional"):
-        super().__init__(name)
-        self._orchestrator = orchestrator or AgentOrchestrator()
-        
+    def __init__(
+        self,
+        orchestrator: AgentOrchestrator,
+        prompt: str = "Vous: ",
+        typing_delay: float = 0.03
+    ):
+        super().__init__(name="interactional")
+        self.orchestrator = orchestrator
+        self.prompt = prompt
+        self.typing_delay = typing_delay
+
     def run(self) -> None:
-        """
-        Lance la boucle principale d'interaction avec l'utilisateur.
-        """
-        print("\nBienvenue dans le système d'agent touristique !")
-        print("Tapez 'quit' pour quitter ou 'clear' pour effacer l'historique.")
-        print("-" * 50)
-        
+        self._display_welcome()
         while True:
             try:
-                user_input = input("\nVous: ").strip()
-                
-                if not user_input or user_input.lower() == 'quit':
-                    print("\nAu revoir ! À bientôt !")
+                user_input = self._read_input()
+                if user_input in ("", "quit"):
+                    self._say("Au revoir ! À bientôt !")
                     break
-                elif user_input.lower() == 'clear':
-                    self.clear_memory()
-                    print("\nHistorique effacé.")
+                if user_input == "clear":
+                    self.orchestrator.clear_memory()
+                    self._say("Historique effacé.")
                     continue
-                
-                # L'orchestrator gère tout le traitement
-                result = self._orchestrator.process_message(user_input)
-                
+
+                result = self.orchestrator.process_message(user_input)
                 if result["success"]:
-                    # Afficher la réponse de l'assistant mot par mot
-                    print("\nAssistant: ", end="", flush=True)
-                    self._print_typing_effect(result['response'])
+                    self._print_typing(result["response"])
                 else:
-                    print(f"\nErreur: {result.get('error', 'Erreur inconnue')}")
-                    
+                    logger.error("Erreur de traitement : %s", result.get("error"))
+                    self._say(f"Erreur interne : {result.get('error')}")
             except KeyboardInterrupt:
-                print("\nAu revoir ! À bientôt !")
+                self._say("\nInterruption, fermeture du programme.")
                 break
             except Exception as e:
-                print(f"\nErreur: {e}")
-    
-    def _print_typing_effect(self, text: str, delay: float = 0.03) -> None:
-        """
-        Affiche le texte mot par mot avec un effet de frappe.
-        
-        Args:
-            text (str): Le texte à afficher
-            delay (float): Le délai entre chaque mot en secondes
-        """
-        words = text.split()
-        for i, word in enumerate(words):
-            print(word, end="", flush=True)
-            if i < len(words) - 1:
-                print(" ", end="", flush=True)
-            time.sleep(delay)
-        print()  # Nouvelle ligne à la fin
-        
-    def get_conversation_history(self) -> list:
-        """
-        Récupère l'historique des conversations depuis l'orchestrateur.
-        """
-        return self._orchestrator.get_conversation_history()
-        
-    def clear_memory(self) -> None:
-        """
-        Efface la mémoire via l'orchestrateur.
-        """
-        self._orchestrator.clear_memory()
+                logger.exception("Exception inattendue")
+                self._say(f"Erreur inattendue : {e}")
+
+    def _display_welcome(self) -> None:
+        banner = "\nBienvenue dans le système d'agent touristique !"
+        self._say(banner)
+        self._say("Tapez 'quit' pour quitter ou 'clear' pour effacer l'historique.")
+        self._say("-" * 50)
+
+    def _read_input(self) -> str:
+        return input(self.prompt).strip()
+
+    def _say(self, message: str) -> None:
+        print(message, flush=True)
+
+    def _print_typing(self, text: str) -> None:
+        for word in text.split():
+            print(word, end=" ", flush=True)
+            time.sleep(self.typing_delay)
+        print()
 
 if __name__ == "__main__":
-    agent = InteractionalAgent()
+    orchestrator = AgentOrchestrator()
+    agent = InteractionalAgent(orchestrator=orchestrator)
     agent.run()
