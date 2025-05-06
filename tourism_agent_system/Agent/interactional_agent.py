@@ -64,6 +64,8 @@ class InteractionalAgent(Agent):
             time.sleep(self.typing_delay)
         print()
 
+        
+
 if __name__ == "__main__":
     orchestrator = AgentOrchestrator()
     agent = InteractionalAgent(orchestrator=orchestrator)

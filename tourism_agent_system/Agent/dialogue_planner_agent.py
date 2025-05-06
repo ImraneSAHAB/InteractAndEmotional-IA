@@ -1,9 +1,10 @@
 # dialogue_planner_agent.py
 
 from .Agent import Agent
-from typing import Dict, Any, List
-import ollama
+import requests
+from typing import Dict, Any, List, Optional
 import json
+import re
 
 class DialoguePlannerAgent(Agent):
     """
@@ -12,8 +13,9 @@ class DialoguePlannerAgent(Agent):
     
     def __init__(self, name: str = "dialogue_planner"):
         super().__init__(name)
-        self._llm = ollama.Client()
         self._model_config = self._config["model"]
+        self._api_key = self._model_config["api_key"]
+        self._api_url = self._model_config["api_url"]
 
     def get_next_question(
         self,
@@ -72,22 +74,50 @@ class DialoguePlannerAgent(Agent):
         
         try:
             # Obtenir la réponse du LLM
-            response = self._llm.chat(
-                model=self._model_config["name"],
-                messages=prompt,
-                options={
-                    "temperature": 0.7,
-                    "max_tokens": 100
-                }
-            )
-            
-            # Nettoyer et retourner la réponse
-            question = response["message"]["content"].strip()
-            return question
+            response = self._get_llm_response(prompt)
+            return response
             
         except Exception as e:
             print(f"Erreur lors de la génération de la question: {e}")
             return "Pouvez-vous me donner plus d'informations ?"
+            
+    def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
+        """
+        Obtient une réponse de l'API Mistral.
+        
+        Args:
+            prompt (List[Dict[str, str]]): Le prompt à envoyer au LLM
+            
+        Returns:
+            str: La réponse du LLM
+        """
+        try:
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": "mistral-tiny",
+                "messages": prompt,
+                "temperature": self._model_config["temperature"],
+                "max_tokens": self._model_config["max_tokens"]
+            }
+            
+            response = requests.post(
+                f"{self._api_url}/chat/completions",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                raise Exception(f"Erreur API Mistral: {response.status_code}")
+                
+        except Exception as e:
+            print(f"Erreur lors de l'appel à l'API Mistral: {e}")
+            raise
             
     def _format_known_slots(self, slots: Dict[str, Any]) -> str:
         """

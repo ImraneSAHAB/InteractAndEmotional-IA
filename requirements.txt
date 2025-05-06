@@ -1,4 +1,4 @@
-ollama
+python-dotenv
 chatbot
 chromadb
 dotenv

@@ -1,6 +1,6 @@
 # intent_detection_agent.py
 from .Agent import Agent
-import ollama
+import requests
 from typing import Dict, Any, List, Optional
 import re
 import json
@@ -14,8 +14,9 @@ class IntentDetectionAgent(Agent):
 
     def __init__(self, name: str = "intent_slot_extractor"):
         super().__init__(name)
-        self._llm = ollama.Client()
         self._model_config = self._config["model"]
+        self._api_key = self._model_config["api_key"]
+        self._api_url = self._model_config["api_url"]
         # Initialisation des slots par défaut
         self._current_slots = {
             "location": "",
@@ -125,7 +126,7 @@ class IntentDetectionAgent(Agent):
 
         try:
             # Obtenir la réponse du LLM
-            response = self._llm.generate(slots_prompt)
+            response = self._get_llm_response([{"role": "user", "content": slots_prompt}])
             
             # Parser la réponse JSON
             slots = json.loads(response)
@@ -141,6 +142,7 @@ class IntentDetectionAgent(Agent):
             print(f"Erreur lors de l'extraction des slots : {str(e)}")
             # En cas d'erreur, retourner un dictionnaire avec des slots vides
             return {slot: "" for slot in required_slots[intent]}
+
     def _build_prompt(self, message: str) -> List[Dict[str, str]]:
         """
         Construit le prompt d'analyse.
@@ -194,26 +196,41 @@ Slots:
 
     def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
         """
-        Interroge le LLM
+        Interroge l'API Mistral
 
         Args:
             prompt (List[Dict[str, str]]): prompt formaté
 
         Returns:
-            str: contenu brut de la réponse
+            str: Réponse du LLM
         """
         try:
-            response = self._llm.chat(
-                model=self._model_config["name"],
-                messages=prompt,
-                options={
-                    "temperature": self._model_config["temperature"],
-                    "max_tokens": self._model_config["max_tokens"]
-                }
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": "mistral-tiny",
+                "messages": prompt,
+                "temperature": self._model_config["temperature"],
+                "max_tokens": self._model_config["max_tokens"]
+            }
+            
+            response = requests.post(
+                f"{self._api_url}/chat/completions",
+                headers=headers,
+                json=data
             )
-            return response["message"]["content"]
+            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                raise Exception(f"Erreur API Mistral: {response.status_code}")
+                
         except Exception as e:
-            return "Intent: unknown\nSlots: {}"
+            print(f"Erreur lors de l'appel à l'API Mistral: {e}")
+            raise
 
     def _parse_response(self, response: str) -> Dict[str, Any]:
         """
@@ -305,14 +322,7 @@ Répondez uniquement avec la requête extraite, sans explications ni texte suppl
         ]
 
         try:
-            response = self._llm.chat(
-                model=self._model_config["name"],
-                messages=prompt,
-                options={
-                    "temperature": self._model_config["temperature"],
-                    "max_tokens": self._model_config["max_tokens"]
-                }
-            )
-            return response["message"]["content"].strip()
+            response = self._get_llm_response(prompt)
+            return response.strip()
         except Exception as e:
             return message

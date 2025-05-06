@@ -5,7 +5,7 @@ from tourism_agent_system.Agent.orchestrator import AgentOrchestrator
 
 
 app = FastAPI(title="Tourism Agent System API")
-/
+
 # 1) Activer CORS pour autoriser toutes les origines 
 app.add_middleware(
     CORSMiddleware,
@@ -28,3 +28,14 @@ def chat_endpoint(payload: dict):
     # Appel de ton orchestrator
     result = orchestrator.process_message(message)
     return result
+
+@app.post("/clear-memory")
+def clear_memory_endpoint():
+    """
+    Endpoint pour effacer la mémoire de l'orchestrateur
+    """
+    try:
+        orchestrator.clear_memory()
+        return {"success": True, "message": "Mémoire effacée avec succès"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'effacement de la mémoire : {str(e)}")
