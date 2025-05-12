@@ -2,10 +2,10 @@
 
 import json
 import requests
-from .base_agent import Agent
+from .base_agent import BaseAgent
 from typing import Dict, Any, List
 
-class SearchAgent(Agent):
+class SearchAgent(BaseAgent):
     """
     Agent responsable d'effectuer des recherches web via une API et de renvoyer les résultats.
 

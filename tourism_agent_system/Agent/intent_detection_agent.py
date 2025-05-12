@@ -1,11 +1,11 @@
 # intent_detection_agent.py
-from .base_agent import Agent
+from .base_agent import BaseAgent
 import requests
 from typing import Dict, Any, List, Optional
 import re
 import json
 
-class IntentDetectionAgent(Agent):
+class IntentDetectionAgent(BaseAgent):
     """
     Agent pour détecter l'intention et extraire les slots remplis ou manquants
     """

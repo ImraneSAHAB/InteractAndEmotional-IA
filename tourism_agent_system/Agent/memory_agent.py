@@ -1,4 +1,4 @@
-from .base_agent import Agent
+from .base_agent import BaseAgent
 from typing import List, Dict, Any
 import sys
 import os
@@ -11,7 +11,7 @@ import uuid
 # Ajouter le répertoire parent au chemin Python
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-class MemoryAgent(Agent):
+class MemoryAgent(BaseAgent):
     """
     Agent qui gère la mémoire des messages avec le chat.
     """

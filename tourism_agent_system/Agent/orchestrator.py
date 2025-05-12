@@ -1,8 +1,7 @@
-from .base_agent import Agent
+from .base_agent import BaseAgent
 from .memory_agent import MemoryAgent
 from .emotion_detection_agent import EmotionDetectionAgent
 from .intent_detection_agent import IntentDetectionAgent
-from .dialogue_planner_agent import DialoguePlannerAgent
 from .threshold_agent import ThresholdAgent
 from .search_agent import SearchAgent
 from .response_generator_agent import ResponseGeneratorAgent
@@ -10,11 +9,8 @@ from .response_generator_agent import ResponseGeneratorAgent
 import requests
 import json
 from typing import Dict, Any, List, Optional
-from intent_detection_agent import IntentDetectionAgent
-from search_agent import SearchAgent
-import json
 
-class AgentOrchestrator(Agent):
+class AgentOrchestrator(BaseAgent):
     """
     Orchestrateur qui gère les interactions entre les différents agents.
     Hérite de la classe de base Agent pour charger nom, rôle, goal et backstory.

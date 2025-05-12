@@ -1,10 +1,10 @@
-from .base_agent import Agent
+from .base_agent import BaseAgent
 import requests
 from typing import Dict, Any, List, Optional
 import json
 import re
 
-class ResponseGeneratorAgent(Agent):
+class ResponseGeneratorAgent(BaseAgent):
     """
     Agent qui génère des réponses contextuelles basées sur l'intent, les slots et l'émotion de l'utilisateur
     """

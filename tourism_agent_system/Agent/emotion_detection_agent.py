@@ -1,11 +1,11 @@
 # emotion_detection_agent.py
-from .base_agent import Agent
+from .base_agent import BaseAgent
 import requests
 from typing import Dict, Any, List, Optional
 import json
 import re
 
-class EmotionDetectionAgent(Agent):
+class EmotionDetectionAgent(BaseAgent):
     """
     Agent qui détecte les émotions dans les messages
     """
