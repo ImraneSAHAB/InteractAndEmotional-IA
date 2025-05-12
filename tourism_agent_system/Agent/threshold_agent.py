@@ -1,6 +1,6 @@
 # threshold_agent.py
 
-from .Agent import Agent
+from .base_agent import Agent
 from typing import Dict, Any, List, Optional
 
 class ThresholdAgent(Agent):

@@ -1,5 +1,5 @@
 # emotion_detection_agent.py
-from .Agent import Agent
+from .base_agent import Agent
 import requests
 from typing import Dict, Any, List, Optional
 import json

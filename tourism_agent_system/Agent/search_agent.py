@@ -2,7 +2,7 @@
 
 import json
 import requests
-from .Agent import Agent
+from .base_agent import Agent
 from typing import Dict, Any, List
 
 class SearchAgent(Agent):
