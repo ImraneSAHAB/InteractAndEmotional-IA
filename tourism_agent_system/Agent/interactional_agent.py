@@ -1,9 +1,11 @@
-from base_agent import Agent
-from orchestrator import AgentOrchestrator
+import logging
+from typing import Optional
+from .base_agent import BaseAgent
+from .orchestrator import AgentOrchestrator
 from typing import Dict, Any
 import time
 
-class InteractionalAgent(Agent):
+class InteractionalAgent(BaseAgent):
     """
     Agent qui gère les interactions avec l'utilisateur
     """

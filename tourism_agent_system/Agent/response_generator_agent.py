@@ -1,18 +1,19 @@
-from base_agent import Agent
-import ollama
+from .base_agent import BaseAgent
+import requests
 from typing import Dict, Any, List, Optional
 import json
 import re
 
-class ResponseGeneratorAgent(Agent):
+class ResponseGeneratorAgent(BaseAgent):
     """
     Agent qui génère des réponses contextuelles basées sur l'intent, les slots et l'émotion de l'utilisateur
     """
     
     def __init__(self, name: str = "response_generator"):
         super().__init__(name)
-        self._llm = ollama.Client()
         self._model_config = self._config["model"]
+        self._api_key = self._model_config["api_key"]
+        self._api_url = self._model_config["api_url"]
         
     def generate_response(self, message: str, emotion: str, intent: str, slots: Dict[str, Any], search_results: List[Dict[str, Any]] = None) -> str:
         """
@@ -183,7 +184,7 @@ class ResponseGeneratorAgent(Agent):
         
     def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
         """
-        Obtient une réponse du LLM.
+        Obtient une réponse de l'API Mistral.
         
         Args:
             prompt (List[Dict[str, str]]): Le prompt à envoyer au LLM
@@ -192,17 +193,32 @@ class ResponseGeneratorAgent(Agent):
             str: La réponse du LLM
         """
         try:
-            response = self._llm.chat(
-                model=self._model_config["name"],
-                messages=prompt,
-                options={
-                    "temperature": 0.1,
-                    "max_tokens": 200
-                }
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": "mistral-tiny",
+                "messages": prompt,
+                "temperature": self._model_config["temperature"],
+                "max_tokens": self._model_config["max_tokens"]
+            }
+            
+            response = requests.post(
+                f"{self._api_url}/chat/completions",
+                headers=headers,
+                json=data
             )
-            return response["message"]["content"]
-        except Exception:
-            return "Désolé, je n'ai pas pu générer une réponse appropriée."
+            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                raise Exception(f"Erreur API Mistral: {response.status_code}")
+                
+        except Exception as e:
+            print(f"Erreur lors de l'appel à l'API Mistral: {e}")
+            raise
         
     def run(self, message: str, emotions: List[str], context: Optional[Dict] = None) -> str:
         """

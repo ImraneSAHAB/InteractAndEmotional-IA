@@ -1,15 +1,16 @@
-from base_agent import Agent
-from memory_agent import MemoryAgent
-from emotion_detection_agent import EmotionDetectionAgent
-from response_generator_agent import ResponseGeneratorAgent
-from threshold_agent import ThresholdAgent
-import ollama
-from typing import Dict, Any, List, Optional
-from intent_detection_agent import IntentDetectionAgent
-from search_agent import SearchAgent
-import json
+from .base_agent import BaseAgent
+from .memory_agent import MemoryAgent
+from .emotion_detection_agent import EmotionDetectionAgent
+from .intent_detection_agent import IntentDetectionAgent
+from .threshold_agent import ThresholdAgent
+from .search_agent import SearchAgent
+from .response_generator_agent import ResponseGeneratorAgent
 
-class AgentOrchestrator(Agent):
+import requests
+import json
+from typing import Dict, Any, List, Optional
+
+class AgentOrchestrator(BaseAgent):
     """
     Orchestrateur qui gère les interactions entre les différents agents.
     Hérite de la classe de base Agent pour charger nom, rôle, goal et backstory.
@@ -17,10 +18,10 @@ class AgentOrchestrator(Agent):
     
     def __init__(self, name: str = "coordinator"):
         super().__init__(name)  # Initialise configuration et métadonnées via Agent
-        # Initialiser le client LLM
-        self._llm = ollama.Client()
-        # Charger la configuration du modèle (nom, temperature, max_tokens)
+        # Configuration de l'API Mistral
         self._model_config = self._config["model"]
+        self._api_key = self._model_config["api_key"]
+        self._api_url = self._model_config["api_url"]
         
         # Instancier les agents auxiliaires
         self._memory_agent = MemoryAgent()                # A4: gère la mémoire
@@ -208,25 +209,49 @@ class AgentOrchestrator(Agent):
             "time": "",
         }
 
-    def _extract_info(self, message: str) -> Dict[str, str]:
+    def _call_mistral_api(self, messages: List[Dict[str, str]]) -> str:
         """
-        Extrait les informations pertinentes d'un message en utilisant le LLM.
+        Appelle l'API Mistral pour obtenir une réponse.
         
         Args:
-            message (str): Le message à analyser
+            messages (List[Dict[str, str]]): Liste des messages pour la conversation
             
         Returns:
-            Dict[str, str]: Dictionnaire contenant les informations extraites
+            str: Réponse du modèle
+        """
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "model": "mistral-tiny",
+            "messages": messages,
+            "temperature": self._model_config["temperature"],
+            "max_tokens": self._model_config["max_tokens"]
+        }
+        
+        response = requests.post(
+            f"{self._api_url}/chat/completions",
+            headers=headers,
+            json=data
+        )
+        
+        if response.status_code == 200:
+            return response.json()["choices"][0]["message"]["content"]
+        else:
+            raise Exception(f"Erreur API Mistral: {response.status_code}")
+
+    def _extract_info(self, message: str) -> Dict[str, str]:
+        """
+        Extrait les informations pertinentes d'un message en utilisant l'API Mistral.
         """
         try:
-            response = self._llm.chat(
-                model=self._model_config["name"],
-                messages=[
-                    {"role": "system", "content": "Extrayez les informations au format JSON: {\"establishment\": \"nom\", \"location\": \"lieu\"}"},
-                    {"role": "user", "content": message}
-                ],
-                options={"temperature": 0.1, "max_tokens": 200}
-            )
-            return json.loads(response["message"]["content"])
+            messages = [
+                {"role": "system", "content": "Extrayez les informations au format JSON: {\"establishment\": \"nom\", \"location\": \"lieu\"}"},
+                {"role": "user", "content": message}
+            ]
+            response = self._call_mistral_api(messages)
+            return json.loads(response)
         except Exception:
             return {"establishment": "", "location": ""}

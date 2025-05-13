@@ -1,26 +1,33 @@
-from base_agent import Agent
+from .base_agent import BaseAgent
 from typing import List, Dict, Any
 import sys
 import os
 import chromadb
 from datetime import datetime
 import json
-import ollama
+import requests
 import uuid
 
 # Ajouter le répertoire parent au chemin Python
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-class MemoryAgent(Agent):
+class MemoryAgent(BaseAgent):
     """
     Agent qui gère la mémoire des messages avec le chat.
     """
     
     def __init__(self, name: str = "memory"):
         super().__init__(name)
-        # Initialiser le LLM avec la configuration
-        self._llm = ollama.Client()
         self._model_config = self._config["model"]
+        self._api_key = self._model_config["api_key"]
+        self._api_url = self._model_config["api_url"]
+        self._messages = []
+        self._current_slots = {
+            "location": "",
+            "food_type": "",
+            "budget": "",
+            "time": "",
+        }
         
         # Créer le chemin absolu pour ChromaDB dans tourism_agent_system
         base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,20 +41,6 @@ class MemoryAgent(Agent):
             metadata={"hnsw:space": "cosine"}
         )
         
-        # Initialiser les attributs
-        self._messages = []
-        self._current_conversation = {
-            "user_message": None,
-            "ai_message": None,
-            "emotion": None,
-            "intent": None,
-            "slots": {
-                "location": None,
-                "food_type": None,
-                "budget": None,
-                "time": None
-            }
-        }
         self._load_messages_from_chromadb()
         
     def _load_messages_from_chromadb(self) -> None:
@@ -55,9 +48,6 @@ class MemoryAgent(Agent):
         Charge les messages depuis ChromaDB.
         """
         try:
-            # Initialiser les slots actuels
-            self._current_slots = {}
-
             # Récupérer tous les documents
             results = self._collection.get()
             
@@ -125,13 +115,9 @@ class MemoryAgent(Agent):
             self._messages.append(message)
             
             if role == "user":
-                self._current_conversation["user_message"] = content
-                self._current_conversation["emotion"] = emotion
-                self._current_conversation["intent"] = intent
-                if slots:
-                    self._current_conversation["slots"].update({k: v for k, v in slots.items() if v})
+                self._current_slots.update({k: v for k, v in slots.items() if v})
             elif role == "assistant":
-                self._current_conversation["ai_message"] = content
+                pass
             
             if self._current_conversation["user_message"] and self._current_conversation["ai_message"]:
                 self._save_conversation()
@@ -298,11 +284,45 @@ class MemoryAgent(Agent):
                 {"role": "user", "content": f"Recherchez dans l'historique: {query}\n\nHistorique:\n{json.dumps(self._messages, indent=2)}"}
             ]
             
-            response = self._llm.chat(
-                model=self._model_config["name"],
-                messages=prompt,
-                options={"temperature": 0.1, "max_tokens": 200}
-            )
-            return json.loads(response["message"]["content"])
+            response = self._get_llm_response(prompt)
+            return json.loads(response)
         except Exception:
             return {"found": False, "confidence": "low", "information": ""}
+
+    def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
+        """
+        Obtient une réponse de l'API Mistral.
+        
+        Args:
+            prompt (List[Dict[str, str]]): Le prompt à envoyer au LLM
+            
+        Returns:
+            str: La réponse du LLM
+        """
+        try:
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": "mistral-tiny",
+                "messages": prompt,
+                "temperature": self._model_config["temperature"],
+                "max_tokens": self._model_config["max_tokens"]
+            }
+            
+            response = requests.post(
+                f"{self._api_url}/chat/completions",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                raise Exception(f"Erreur API Mistral: {response.status_code}")
+                
+        except Exception as e:
+            print(f"Erreur lors de l'appel à l'API Mistral: {e}")
+            raise

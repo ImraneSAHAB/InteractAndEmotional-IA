@@ -1,9 +1,11 @@
 # emotion_detection_agent.py
-from base_agent import Agent
-import ollama
-from typing import Dict, List
+from .base_agent import BaseAgent
+import requests
+from typing import Dict, Any, List, Optional
+import json
+import re
 
-class EmotionDetectionAgent(Agent):
+class EmotionDetectionAgent(BaseAgent):
     """
     Agent qui détecte les émotions dans les messages
     """
@@ -13,12 +15,9 @@ class EmotionDetectionAgent(Agent):
     
     def __init__(self, name: str = "emotion_detector"):
         super().__init__(name)
-        self._llm = ollama.Client()
-        self._model_config = {
-            "name": "gemma3",
-            "temperature": 0.5,
-            "max_tokens": 100
-        }
+        self._model_config = self._config["model"]
+        self._api_key = self._model_config["api_key"]
+        self._api_url = self._model_config["api_url"]
         
     def run(self, message: str) -> List[str]:
         """
@@ -82,24 +81,41 @@ class EmotionDetectionAgent(Agent):
         
     def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
         """
-        Obtient la réponse du LLM.
+        Obtient une réponse de l'API Mistral.
         
         Args:
-            prompt (List[Dict[str, str]]): Le prompt à envoyer
+            prompt (List[Dict[str, str]]): Le prompt à envoyer au LLM
             
         Returns:
             str: La réponse du LLM
         """
-        response = self._llm.chat(
-            model=self._model_config["name"],
-            messages=prompt,
-            options={
+        try:
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": "mistral-tiny",
+                "messages": prompt,
                 "temperature": self._model_config["temperature"],
                 "max_tokens": self._model_config["max_tokens"]
             }
-        )
-        
-        return response["message"]["content"]
+            
+            response = requests.post(
+                f"{self._api_url}/chat/completions",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            else:
+                raise Exception(f"Erreur API Mistral: {response.status_code}")
+                
+        except Exception as e:
+            print(f"Erreur lors de l'appel à l'API Mistral: {e}")
+            raise
         
     def _parse_emotions(self, response: str) -> List[str]:
         """

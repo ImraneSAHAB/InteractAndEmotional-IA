@@ -1,8 +1,10 @@
 {
     "model": {
         "name": "mistral",
+        "api_key": "eV9l8fq42jxaUdfT1ymyknfvz92oOewC",
         "temperature": 0.3,
-        "max_tokens": 2000
+        "max_tokens": 2000,
+        "api_url": "https://api.mistral.ai/v1"
     },
     "search": {
         "api_key": "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",

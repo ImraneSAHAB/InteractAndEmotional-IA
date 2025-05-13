@@ -1,9 +1,9 @@
 # threshold_agent.py
 
-from base_agent import Agent
+from .base_agent import BaseAgent
 from typing import Dict, Any, List, Optional
 
-class ThresholdAgent(Agent):
+class ThresholdAgent(BaseAgent):
     """
     Agent responsable de vérifier si tous les slots requis sont remplis
     et de signaler à l'orchestrator si une réponse finale peut être générée.

@@ -2,7 +2,7 @@ import json
 from typing import Dict, Any
 import os
 
-class Agent:
+class BaseAgent:
     """Classe de base pour un agent IA."""
     
     def __init__(self, name: str):
