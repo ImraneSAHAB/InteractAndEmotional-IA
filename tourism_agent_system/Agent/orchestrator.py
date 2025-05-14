@@ -47,15 +47,10 @@ class AgentOrchestrator(BaseAgent):
             
             # 1. Détection de l'intention
             intent_result = self._intent_agent.run(message)
-            intent = {
-                "intent": intent_result["intent"],
-                "slots": intent_result["slots"],
-                "confidence": 0.8  # Valeur par défaut
-            }
             
             self.tracking_agent.log_execution(
                 agent_name="intent_detection",
-                action=f"Détection de l'intention: {intent['intent']}",
+                action=f"Détection de l'intention: {intent_result['intent']}",
                 status="succès"
             )
             
@@ -100,9 +95,9 @@ class AgentOrchestrator(BaseAgent):
             
             # 4. Vérification des seuils
             threshold_check = self._threshold_agent.check_thresholds(
-                intent=intent,
+                intent=intent_result,
                 emotion=emotion,
-                search_results={"results": search_results}  # Encapsuler la liste dans un dict pour la compatibilité
+                search_results={"results": search_results}
             )
             
             self.tracking_agent.log_execution(
@@ -123,15 +118,9 @@ class AgentOrchestrator(BaseAgent):
                 role="user",
                 content=message,
                 emotion=emotion["emotion"],
-                slots=intent["slots"],
-                intent=intent["intent"]
+                slots=intent_result["slots"],
+                intent=intent_result["intent"]
             )
-            
-            memory_update = {
-                "slots": intent["slots"],
-                "emotion": emotion["emotion"],
-                "intent": intent["intent"]
-            }
             
             self.tracking_agent.log_execution(
                 agent_name="memory",
@@ -150,8 +139,8 @@ class AgentOrchestrator(BaseAgent):
             response = self._response_generator.generate_response(
                 message=message,
                 emotion=emotion["emotion"],
-                intent=intent["intent"],
-                slots=intent["slots"],
+                intent=intent_result["intent"],
+                slots=intent_result["slots"],
                 search_results=search_results
             )
             
@@ -160,7 +149,7 @@ class AgentOrchestrator(BaseAgent):
                 role="assistant",
                 content=response,
                 emotion=emotion["emotion"],
-                intent=intent["intent"]
+                intent=intent_result["intent"]
             )
             
             self.tracking_agent.log_execution(
@@ -211,16 +200,9 @@ class AgentOrchestrator(BaseAgent):
 
     def clear_memory(self) -> None:
         """
-        Efface toute la mémoire de l'agent et réinitialise les slots.
+        Efface toute la mémoire de l'agent.
         """
         self._memory_agent.clear_memory()
-        # Réinitialiser les slots actuels
-        self._memory_agent._current_slots = {
-            "location": "",
-            "food_type": "",
-            "budget": "",
-            "time": "",
-        }
 
     def _call_mistral_api(self, messages: List[Dict[str, str]]) -> str:
         """
@@ -261,10 +243,10 @@ class AgentOrchestrator(BaseAgent):
         """
         try:
             messages = [
-                {"role": "system", "content": "Extrayez les informations au format JSON: {\"establishment\": \"nom\", \"location\": \"lieu\"}"},
+                {"role": "system", "content": "Extrayez les informations pertinentes du message au format JSON."},
                 {"role": "user", "content": message}
             ]
             response = self._call_mistral_api(messages)
             return json.loads(response)
         except Exception:
-            return {"establishment": "", "location": ""}
+            return {}

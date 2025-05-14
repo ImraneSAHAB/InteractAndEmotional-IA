@@ -7,6 +7,8 @@ from datetime import datetime
 import json
 import requests
 import uuid
+import hashlib
+import logging
 
 # Ajouter le répertoire parent au chemin Python
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -34,13 +36,23 @@ class MemoryAgent(BaseAgent):
         chroma_db_path = os.path.join(base_path, "tourism_agent_system", "chroma_db")
         os.makedirs(chroma_db_path, exist_ok=True)
             
-        # Initialiser ChromaDB avec le chemin absolu
+        # Initialiser ChromaDB avec le chemin absolu et désactiver les logs
+        logging.getLogger('chromadb').setLevel(logging.WARNING)
         self._chroma_client = chromadb.PersistentClient(path=chroma_db_path)
         self._collection = self._chroma_client.get_or_create_collection(
             name="conversations",
             metadata={"hnsw:space": "cosine"}
         )
         
+        # Initialiser les attributs
+        self._messages = []
+        self._current_conversation = {
+            "user_message": None,
+            "ai_message": None,
+            "emotion": None,
+            "intent": None,
+            "slots": {}  # Slots dynamiques
+        }
         self._load_messages_from_chromadb()
         
     def _load_messages_from_chromadb(self) -> None:
@@ -94,6 +106,60 @@ class MemoryAgent(BaseAgent):
         except Exception as e:
             print(f"Erreur lors du chargement des messages depuis ChromaDB: {e}")
             
+    def _extract_intent_and_slots(self, message: str) -> tuple[str, Dict[str, Any]]:
+        """
+        Extrait l'intent et les slots d'un message en utilisant le LLM.
+        
+        Args:
+            message (str): Le message à analyser
+            
+        Returns:
+            tuple[str, Dict[str, Any]]: L'intent et les slots extraits
+        """
+        try:
+            prompt = [
+                {"role": "system", "content": """Analysez le message et extrayez :
+                1. L'intention principale (intent)
+                2. Les informations pertinentes (slots)
+                
+                Répondez au format JSON :
+                {
+                    "intent": "l'intention détectée",
+                    "slots": {
+                        "nom_du_slot": "valeur",
+                        ...
+                    }
+                }
+                
+                Les intents possibles incluent mais ne sont pas limités à :
+                - recherche_restaurant
+                - recherche_activite
+                - reservation_hotel
+                - salutation
+                - presentation
+                - remerciement
+                - confirmation
+                - negation
+                - information_generale
+                - demande_information
+                
+                Les slots peuvent être n'importe quelle information pertinente extraite du message.
+                """},
+                {"role": "user", "content": f"Message à analyser : {message}"}
+            ]
+            
+            response = self._llm.chat(
+                model=self._model_config["name"],
+                messages=prompt,
+                options={"temperature": 0.1, "max_tokens": 200}
+            )
+            
+            result = json.loads(response["message"]["content"])
+            return result.get("intent", ""), result.get("slots", {})
+            
+        except Exception as e:
+            return "", {}
+
     def add_message(self, role: str, content: str, emotion: str = None, slots: Dict[str, Any] = None, intent: str = None) -> None:
         """
         Ajoute un message à la mémoire.
@@ -106,6 +172,15 @@ class MemoryAgent(BaseAgent):
             intent (str, optional): L'intention détectée
         """
         try:
+            # Si c'est un message utilisateur, extraire l'intent et les slots
+            if role == "user" and (not intent or not slots):
+                extracted_intent, extracted_slots = self._extract_intent_and_slots(content)
+                intent = intent or extracted_intent
+                if not slots:
+                    slots = extracted_slots
+                else:
+                    slots.update(extracted_slots)
+
             message = {
                 "role": role,
                 "content": content,
@@ -115,15 +190,31 @@ class MemoryAgent(BaseAgent):
             self._messages.append(message)
             
             if role == "user":
-                self._current_slots.update({k: v for k, v in slots.items() if v})
+                self._current_conversation["user_message"] = content
+                self._current_conversation["emotion"] = emotion
+                self._current_conversation["intent"] = intent
+                if slots:
+                    # Mettre à jour les slots dynamiquement
+                    if not self._current_conversation["slots"]:
+                        self._current_conversation["slots"] = {}
+                    self._current_conversation["slots"].update({k: v for k, v in slots.items() if v})
             elif role == "assistant":
-                pass
+                self._current_conversation["ai_message"] = content
             
+            # Sauvegarder la conversation si nous avons à la fois le message utilisateur et la réponse de l'assistant
             if self._current_conversation["user_message"] and self._current_conversation["ai_message"]:
                 self._save_conversation()
+                # Réinitialiser la conversation courante après la sauvegarde
+                self._current_conversation = {
+                    "user_message": None,
+                    "ai_message": None,
+                    "emotion": None,
+                    "intent": None,
+                    "slots": {}
+                }
                 
         except Exception as e:
-            print(f"Erreur lors de l'ajout du message: {e}")
+            raise Exception(f"Erreur lors de l'ajout du message: {str(e)}")
             
     def _save_conversation(self) -> None:
         """
@@ -134,13 +225,19 @@ class MemoryAgent(BaseAgent):
             if not self._current_conversation.get("user_message") or not self._current_conversation.get("ai_message"):
                 return
 
+            # Vérifier et nettoyer l'émotion
+            emotion = self._current_conversation.get("emotion", "")
+            if not emotion or len(emotion) < 2:  # Éviter les émotions trop courtes
+                emotion = "neutre"
+
             # Préparer les métadonnées
             metadata = {
                 "user_message": self._current_conversation["user_message"],
                 "ai_message": self._current_conversation["ai_message"],
-                "emotion": self._current_conversation.get("emotion", ""),
-                "intent": self._current_conversation.get("intent", ""),
-                "slots": json.dumps(self._current_conversation["slots"], ensure_ascii=False)
+                "emotion": str(emotion),
+                "intent": str(self._current_conversation.get("intent", "")),
+                "slots": json.dumps(self._current_conversation.get("slots", {}), ensure_ascii=False),
+                "timestamp": datetime.now().isoformat()
             }
 
             # Créer le document avec les métadonnées incluses
@@ -152,18 +249,19 @@ class MemoryAgent(BaseAgent):
                 f"Slots: {metadata['slots']}"
             )
 
-            # Générer un ID unique pour le document
-            doc_id = str(uuid.uuid4())
+            # Générer un ID unique basé sur le timestamp et un UUID
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+            unique_id = f"conv_{timestamp}_{uuid.uuid4().hex[:8]}"
             
             # Ajouter le document à la collection
             try:
                 self._collection.add(
-                    ids=[doc_id],
+                    ids=[unique_id],
                     documents=[document],
                     metadatas=[metadata]
                 )
             except Exception as e:
-                print(f"Erreur lors de l'ajout du document: {e}")
+                raise Exception(f"Erreur lors de l'ajout du document: {str(e)}")
             
             # Réinitialiser la conversation courante seulement après une sauvegarde réussie
             self._current_conversation = {
@@ -171,16 +269,11 @@ class MemoryAgent(BaseAgent):
                 "ai_message": None,
                 "emotion": None,
                 "intent": None,
-                "slots": {
-                    "location": None,
-                    "food_type": None,
-                    "budget": None,
-                    "time": None
-                }
+                "slots": {}  # Slots dynamiques
             }
 
         except Exception as e:
-            print(f"Erreur lors de la sauvegarde de la conversation: {e}")
+            raise Exception(f"Erreur lors de la sauvegarde de la conversation: {str(e)}")
             
     def get_messages(self) -> List[Dict[str, Any]]:
         """
@@ -208,11 +301,10 @@ class MemoryAgent(BaseAgent):
                         # Vérifier que la collection est bien vide
                         remaining = self._collection.get()
                         if remaining and "ids" in remaining and remaining["ids"]:
-                            print(f"Certains documents n'ont pas été supprimés: {remaining['ids']}")
                             # Essayer de supprimer à nouveau
                             self._collection.delete(ids=remaining["ids"])
                 except Exception as e:
-                    print(f"Erreur lors de la suppression des documents: {e}")
+                    raise Exception(f"Erreur lors de la suppression des documents: {str(e)}")
             
             # Réinitialiser les attributs
             self._messages = []
@@ -221,30 +313,11 @@ class MemoryAgent(BaseAgent):
                 "ai_message": None,
                 "emotion": None,
                 "intent": None,
-                "slots": {
-                    "location": None,
-                    "food_type": None,
-                    "budget": None,
-                    "time": None
-                }
+                "slots": {}  # Slots dynamiques
             }
             
         except Exception as e:
-            print(f"Erreur lors de l'effacement de la mémoire: {e}")
-            # En cas d'erreur, essayer de réinitialiser au moins les variables en mémoire
-            self._messages = []
-            self._current_conversation = {
-                "user_message": None,
-                "ai_message": None,
-                "emotion": None,
-                "intent": None,
-                "slots": {
-                    "location": None,
-                    "food_type": None,
-                    "budget": None,
-                    "time": None
-                }
-            }
+            raise Exception(f"Erreur lors de l'effacement de la mémoire: {str(e)}")
             
     def run(self, prompt: str) -> str:
         """

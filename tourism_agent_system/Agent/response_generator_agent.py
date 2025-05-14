@@ -48,7 +48,6 @@ class ResponseGeneratorAgent(BaseAgent):
                     - Localisation: {slots.get('location')}
                     - Type de cuisine: {slots.get('food_type')}
                     - Budget: {slots.get('budget')}
-                    - Moment: {slots.get('time')}
                     
                     Résultats de recherche web:
                     {json.dumps(search_results, indent=2) if search_results else "Aucun résultat de recherche disponible"}
@@ -57,7 +56,7 @@ class ResponseGeneratorAgent(BaseAgent):
                 ]
             else:
                 prompt = [
-                    {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
+                    {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs.
                     Votre tâche est de fournir une réponse finale basée sur les informations disponibles.
                     
                     Instructions:
@@ -70,9 +69,7 @@ class ResponseGeneratorAgent(BaseAgent):
                     Émotion: {emotion}
                     Intention: {intent}
                     Informations disponibles:
-                    - Localisation: {slots.get('location')}
-                    - Type de cuisine: {slots.get('food_type')}
-                    - Budget: {slots.get('budget')}
+                    {self._format_known_slots(slots)}
                     
                     Génère une réponse appropriée."""}
                 ]
@@ -97,19 +94,9 @@ class ResponseGeneratorAgent(BaseAgent):
             str: Une question naturelle
         """
         try:
-            # Construire le contexte pour le LLM
-            slot_descriptions = {
-                "location": "la ville ou le lieu",
-                "food_type": "le type de cuisine",
-                "budget": "le budget",
-                "time": "le moment de votre visite"
-            }
-            
-            missing_descriptions = [slot_descriptions[slot] for slot in missing_slots]
-            
             prompt = [
-                {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
-                Votre tâche est de poser une question naturelle pour obtenir les informations manquantes nécessaires pour faire une recommandation.
+                {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs.
+                Votre tâche est de poser une question naturelle pour obtenir les informations manquantes nécessaires.
                 
                 Instructions importantes:
                 1. Adaptez votre ton à l'émotion de l'utilisateur
@@ -121,16 +108,8 @@ class ResponseGeneratorAgent(BaseAgent):
                 7. Adaptez la question au contexte de la conversation
                 8. NE LISTEZ PAS les options possibles
                 9. Posez une question OUVERTE
-                10. NE DEMANDEZ PAS le nom du restaurant (vous devez le trouver)
+                10. NE FAITES PAS de suppositions sur les informations manquantes
                 11. Concentrez-vous sur les informations nécessaires pour faire une recommandation
-                12. NE FAITES PAS de suppositions sur le moment (ne mentionnez pas "ce soir", "ce midi", etc.)
-                13. NE FAITES PAS de suppositions sur le budget (ne mentionnez pas "pas cher", "moyen", etc.)
-                14. NE FAITES PAS de suppositions sur le type de cuisine (ne mentionnez pas "français", "italien", etc.)
-                
-                Exemples de bonnes questions:
-                - "Quel est votre budget pour ce repas ?"
-                - "À quelle heure souhaitez-vous dîner ?"
-                - "Dans quel quartier préférez-vous manger ?"
                 
                 Répondez uniquement avec la question, sans explications supplémentaires."""},
                 {"role": "user", "content": f"""
@@ -140,7 +119,7 @@ class ResponseGeneratorAgent(BaseAgent):
                 Ce que nous savons déjà:
                 {self._format_known_slots(filled_slots)}
                 
-                Information(s) à obtenir: {', '.join(missing_descriptions)}
+                Information(s) à obtenir: {', '.join(missing_slots)}
                 
                 Générez une question naturelle pour obtenir ces informations."""}
             ]
@@ -165,8 +144,7 @@ class ResponseGeneratorAgent(BaseAgent):
         formatted = []
         for key, value in slots.items():
             if value:
-                description = self._get_slot_description(key)
-                formatted.append(f"- {description}: {value}")
+                formatted.append(f"- {key}: {value}")
         return "\n".join(formatted) if formatted else "Aucune information connue"
         
     def _get_slot_description(self, slot: str) -> str:

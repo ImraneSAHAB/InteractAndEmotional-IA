@@ -8,11 +8,8 @@ import re
 class EmotionDetectionAgent(BaseAgent):
     """
     Agent spécialisé dans la détection des émotions dans les messages.
-    Utilise Mistral pour analyser le sentiment et l'émotion.
+    Utilise Mistral pour analyser le sentiment et l'émotion de manière dynamique.
     """
-    
-    # Liste des émotions valides
-    VALID_EMOTIONS = ["joie", "tristesse", "colère", "peur", "surprise", "dégoût", "neutre"]
     
     def __init__(self, name: str = "emotion"):
         super().__init__(name)
@@ -70,41 +67,45 @@ class EmotionDetectionAgent(BaseAgent):
 
     def detect_emotion(self, message: str) -> Dict[str, str]:
         """
-        Détecte l'émotion principale dans un message.
+        Détecte l'émotion principale dans un message de manière dynamique.
         
         Args:
             message (str): Le message à analyser
             
         Returns:
-            Dict[str, str]: Dictionnaire contenant l'émotion détectée
+            Dict[str, str]: Dictionnaire contenant l'émotion détectée et sa confiance
         """
         try:
             prompt = [
                 {"role": "system", "content": """Tu es un expert en analyse émotionnelle.
-                Analyse le message et détermine l'émotion principale parmi :
-                - joie
-                - tristesse
-                - colère
-                - peur
-                - surprise
-                - dégoût
-                - neutre
+                Analyse le message et détermine l'émotion principale exprimée.
+                Tu peux identifier n'importe quelle émotion humaine, pas seulement une liste prédéfinie.
                 
-                Réponds UNIQUEMENT avec l'émotion, sans autre texte."""},
+                Réponds au format JSON avec deux champs :
+                {
+                    "emotion": "nom de l'émotion en minuscules",
+                    "confidence": "high/medium/low"
+                }
+                
+                L'émotion doit être un mot simple et clair en français."""},
                 {"role": "user", "content": message}
             ]
             
-            emotion = self._get_llm_response(prompt).strip().lower()
+            response = self._get_llm_response(prompt).strip()
             
-            # Validation de l'émotion
-            valid_emotions = ["joie", "tristesse", "colère", "peur", "surprise", "dégoût", "neutre"]
-            if emotion not in valid_emotions:
-                emotion = "neutre"
-            
-            return {
-                "emotion": emotion,
-                "confidence": "high" if emotion != "neutre" else "medium"
-            }
+            try:
+                result = json.loads(response)
+                return {
+                    "emotion": result.get("emotion", "neutre").lower(),
+                    "confidence": result.get("confidence", "medium")
+                }
+            except json.JSONDecodeError:
+                # Si le format JSON n'est pas respecté, on extrait l'émotion du texte brut
+                emotion = response.lower().strip()
+                return {
+                    "emotion": emotion if emotion else "neutre",
+                    "confidence": "medium"
+                }
             
         except Exception as e:
             print(f"Erreur lors de la détection d'émotion: {e}")
@@ -125,16 +126,6 @@ class EmotionDetectionAgent(BaseAgent):
         """
         system_message = """Vous êtes un expert en analyse d'émotions. Votre tâche est de détecter l'émotion PRINCIPALE dans un message avec précision.
 
-        Voici les émotions possibles avec leurs caractéristiques détaillées :
-        
-        - joie : bonheur, enthousiasme, excitation, satisfaction, contentement, plaisir, optimisme, fierté
-        - tristesse : peine, chagrin, déception, solitude, nostalgie, mélancolie, désespoir, regret
-        - colère : frustration, agacement, rage, irritation, indignation, hostilité, mécontentement, ressentiment
-        - peur : anxiété, inquiétude, panique, terreur, appréhension, nervosité, stress, alarme
-        - surprise : étonnement, stupéfaction, stupéfaction, émerveillement, confusion, déconnexion
-        - dégoût : mépris, répulsion, aversion, dédain, écœurement, rejet, détestation
-        - neutre : absence d'émotion particulière, équilibre émotionnel, calme, sérénité
-        
         Analysez attentivement le message en considérant :
         1. Le contexte global du message
         2. Le ton et le style d'écriture
@@ -143,30 +134,16 @@ class EmotionDetectionAgent(BaseAgent):
         5. La structure et la ponctuation
         6. Les références culturelles
         
-        Répondez avec UNE SEULE émotion, en minuscules.
-        Exemple: "joie" ou "tristesse" ou "neutre"
+        Répondez au format JSON avec deux champs :
+        {
+            "emotion": "nom de l'émotion en minuscules",
+            "confidence": "high/medium/low"
+        }
+        
+        L'émotion doit être un mot simple et clair en français qui décrit le mieux l'état émotionnel exprimé.
         """
             
         return [
             {"role": "system", "content": system_message},
             {"role": "user", "content": f"Message à analyser : {message}"}
         ]
-        
-    def _parse_emotions(self, response: str) -> List[str]:
-        """
-        Analyse la réponse du LLM pour extraire les émotions.
-        
-        Args:
-            response (str): La réponse du LLM
-        
-        Returns:
-            List[str]: Liste des émotions détectées
-        """
-        # Nettoyer la réponse
-        emotion = response.strip().lower()
-        
-        # Vérifier si l'émotion est valide
-        if emotion in self.VALID_EMOTIONS:
-            return [emotion]
-        
-        return ["neutre"]
