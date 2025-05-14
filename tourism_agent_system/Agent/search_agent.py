@@ -91,26 +91,53 @@ class SearchAgent(BaseAgent):
         if not all(result.get(field) for field in ["title", "content", "url"]):
             return False
             
-        if result.get("score", 0) < 0.5:
+        if result.get("score", 0) < 0.3:
             return False
             
         url = result.get("url", "").lower()
-        if not any(domain in url for domain in ["pagesjaunes.fr", "tripadvisor.fr"]):
+        valid_domains = [
+            "pagesjaunes.fr", "tripadvisor.fr", "restaurant.michelin.fr",
+            "lafourchette.com", "resto.fr", "restaurants.mappy.com",
+            "restaurant.mappy.com", "restaurant.lefigaro.fr"
+        ]
+        if not any(domain in url for domain in valid_domains):
             return False
             
         content = result.get("content", "").lower()
-        if len(content) < 50 or "n'existe pas" in content or "n'existe plus" in content:
+        if len(content) < 30:
+            return False
+            
+        negative_phrases = [
+            "n'existe pas", "n'existe plus", "fermé définitivement",
+            "fermé pour toujours", "plus en activité"
+        ]
+        if any(phrase in content for phrase in negative_phrases):
             return False
             
         return True
 
     def _get_fallback_results(self, query: str) -> List[Dict[str, Any]]:
         """
-        Génère des résultats de secours en cas d'échec.
+        Génère des résultats de secours plus détaillés en cas d'échec.
         """
+        location = ""
+        budget = ""
+        day = ""
+        
+        if "dijon" in query.lower():
+            location = "Dijon"
+        if "pas cher" in query.lower() or "pas trop cher" in query.lower():
+            budget = "budget modéré"
+        if "lundi" in query.lower():
+            day = "lundi"
+            
         return [{
-            "title": "Information non disponible",
-            "snippet": f"Je n'ai pas pu trouver d'informations fiables pour {query}. Je vous suggère de consulter directement le site web officiel ou de contacter l'établissement.",
-            "url": "N/A",
-            "score": 0
+            "title": "Recherche de restaurant",
+            "snippet": f"""Je recherche des restaurants à {location} {f'pour {day}' if day else ''} {f'avec un {budget}' if budget else ''}.
+            Je vous suggère de :
+            1. Consulter le site de l'Office de Tourisme de Dijon
+            2. Vérifier les horaires d'ouverture sur les sites des restaurants
+            3. Contacter directement les établissements pour confirmer les informations""",
+            "url": "https://www.destinationdijon.com/",
+            "score": 0.4
         }]

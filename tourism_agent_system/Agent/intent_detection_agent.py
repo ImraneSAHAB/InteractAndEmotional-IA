@@ -201,24 +201,34 @@ Vous êtes un agent expert en traitement du langage naturel. Votre tâche est d'
 Les slots possibles sont :
 - location : la ville ou le lieu mentionné (ex: "Paris", "Dijon", etc.)
 - food_type : le type de cuisine (chinois, italien, français, japonais, indien, etc.)
-- budget : le niveau de prix (20€, 30€, pas cher, moyen, luxe, etc.)
-- time : le moment (ce soir, demain, ce weekend, midi, soir, etc.)
+- budget : le niveau de prix (20€, 30€, pas cher, pas trop cher, moyen, luxe, etc.)
+- time : le moment (ce soir, demain, ce weekend, midi, soir, lundi, mardi, etc.)
 
-Instructions spécifiques :
+Instructions spécifiques pour l'extraction des slots :
+1. Pour le budget :
+   - "pas cher", "pas trop cher", "abordable" = "budget modéré"
+   - "moyen", "standard" = "budget moyen"
+   - "cher", "luxe", "haut de gamme" = "budget élevé"
+   - Les montants exacts (ex: "20€", "30€") doivent être conservés tels quels
+
+2. Pour le time :
+   - Les jours de la semaine (lundi, mardi, etc.) doivent être extraits tels quels
+   - Les moments de la journée (midi, soir) doivent être extraits tels quels
+   - Les expressions temporelles (ce soir, demain, ce weekend) doivent être extraites telles quelles
+
+3. Pour la location :
+   - Extraire les noms de villes et de quartiers
+   - Conserver les prépositions (à, dans, sur) si elles font partie du nom
+
+4. Pour le food_type :
+   - Extraire tous les types de cuisine mentionnés
+   - Si aucun type n'est mentionné, laisser vide
+
+Instructions pour la détection d'intention :
 1. Si le message contient une demande de recherche de restaurant (ex: "je veux trouver un restaurant", "je cherche un restaurant", "je souhaite trouver un restaurant"), détectez l'intention comme "restaurant_search"
-2. Si le message contient une demande de recherche d'activité (ex: "je veux faire une activité", "je cherche des activités", "je souhaite trouver des choses à faire"), détectez l'intention comme "activity_search"
-3. Si le message contient une demande d'activité, détectez l'intention comme "activity_search"
-4. Si le message contient une demande de réservation d'hôtel (ex: "je veux réserver un hôtel", "je cherche un hôtel", "je souhaite trouver un logement"), détectez l'intention comme "hotel_booking"
-5. Si le message contient une demande d'hôtel, détectez l'intention comme "hotel_booking"
-6. Pour les questions comme "Où habites-tu ?", détectez l'intention comme "demande_information"
-7. Ne laissez jamais un slot vide, utilisez une chaîne vide ("") si aucune information n'est trouvée
-8. Soyez attentif aux variations de formulation (ex: "je suis à", "je vis à", "j'habite à", etc.)
-
-Instructions pour l'extraction des slots :
-1. Pour le type de cuisine (food_type), détectez tous les types de cuisine mentionnés (chinois, italien, français, etc.)
-2. Pour le budget, détectez les montants exacts (20€, 30€) et les niveaux de prix (pas cher, moyen, luxe)
-3. Pour l'heure (time), détectez les moments précis (ce soir, demain) et les périodes (midi, soir)
-4. Pour la localisation (location), détectez les villes et les quartiers mentionnés
+2. Si le message contient une demande de recherche d'activité, détectez l'intention comme "activity_search"
+3. Si le message contient une demande de réservation d'hôtel, détectez l'intention comme "hotel_booking"
+4. Pour les questions comme "Où habites-tu ?", détectez l'intention comme "demande_information"
 
 Répondez dans le format suivant (sans texte en dehors) :
 Intent: <intent>
@@ -228,7 +238,6 @@ Slots:
 - budget: <niveau de prix>
 - time: <moment>
 """
-
         return [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Message à analyser : {message}"}

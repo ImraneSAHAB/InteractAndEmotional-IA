@@ -23,19 +23,23 @@ class ResponseGeneratorAgent(BaseAgent):
             if intent == "restaurant_search":
                 prompt = [
                     {"role": "system", "content": """Vous êtes un assistant touristique qui aide les utilisateurs à trouver des restaurants.
-                    Votre tâche est de fournir une réponse finale basée sur les informations vérifiées.
+                    Votre tâche est de fournir une réponse utile et informative basée sur les informations disponibles.
                     
                     Instructions:
-                    1. Ne mentionnez que les restaurants dont vous avez toutes les informations vérifiées
-                    2. Pour chaque restaurant, incluez uniquement :
+                    1. Si vous avez des informations vérifiées sur des restaurants, mentionnez-les en priorité
+                    2. Pour chaque restaurant mentionné, incluez :
                        - Le nom exact
-                       - L'adresse complète et vérifiée
-                       - Les horaires d'ouverture
-                       - Le budget moyen
-                    3. Si vous n'avez pas toutes ces informations pour un restaurant, ne le mentionnez pas
-                    4. Ne faites pas de suppositions
-                    5. Soyez concis et direct
-                    6. Terminez par une question ouverte"""},
+                       - L'adresse (si disponible)
+                       - Les horaires d'ouverture (si disponibles)
+                       - Le budget moyen (si disponible)
+                    3. Si vous n'avez pas toutes les informations pour un restaurant mais que vous avez des informations partielles fiables, vous pouvez les mentionner en précisant ce qui est vérifié
+                    4. Si vous n'avez pas d'informations vérifiées sur des restaurants spécifiques :
+                       - Suggérez des sources fiables pour trouver l'information (sites web officiels, etc.)
+                       - Proposez des alternatives (autres jours, autres quartiers, etc.)
+                       - Demandez des précisions si nécessaire
+                    5. Adaptez votre ton à l'émotion de l'utilisateur
+                    6. Soyez concis mais informatif
+                    7. Terminez par une question ouverte ou une suggestion d'action"""},
                     {"role": "user", "content": f"""
                     Message: {message}
                     Émotion: {emotion}
@@ -44,11 +48,12 @@ class ResponseGeneratorAgent(BaseAgent):
                     - Localisation: {slots.get('location')}
                     - Type de cuisine: {slots.get('food_type')}
                     - Budget: {slots.get('budget')}
+                    - Moment: {slots.get('time')}
                     
                     Résultats de recherche web:
                     {json.dumps(search_results, indent=2) if search_results else "Aucun résultat de recherche disponible"}
                     
-                    Génère une réponse qui ne mentionne que les restaurants dont vous avez toutes les informations vérifiées."""}
+                    Génère une réponse utile basée sur les informations disponibles."""}
                 ]
             else:
                 prompt = [
