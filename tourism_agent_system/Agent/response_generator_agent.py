@@ -9,7 +9,7 @@ class ResponseGeneratorAgent(BaseAgent):
     Agent qui génère des réponses contextuelles basées sur l'intent, les slots et l'émotion de l'utilisateur
     """
     
-    def __init__(self, name: str = "response_generator"):
+    def __init__(self, name: str = "response"):
         super().__init__(name)
         self._model_config = self._config["model"]
         self._api_key = self._model_config["api_key"]

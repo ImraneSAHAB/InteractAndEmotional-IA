@@ -5,12 +5,80 @@ from typing import Dict, Any, List, Optional
 
 class ThresholdAgent(BaseAgent):
     """
-    Agent responsable de vérifier si tous les slots requis sont remplis
-    et de signaler à l'orchestrator si une réponse finale peut être générée.
+    Agent responsable de la gestion des seuils de confiance pour les différentes actions.
     """
 
     def __init__(self, name: str = "threshold"):
         super().__init__(name)
+        self._threshold_config = self._config.get("threshold", {})
+        self._default_threshold = 0.7
+
+    def check_threshold(self, value: float, action_type: str) -> bool:
+        """
+        Vérifie si une valeur dépasse le seuil pour un type d'action donné.
+        
+        Args:
+            value (float): La valeur à vérifier
+            action_type (str): Le type d'action (ex: "search", "booking", etc.)
+            
+        Returns:
+            bool: True si la valeur dépasse le seuil, False sinon
+        """
+        threshold = self._threshold_config.get(action_type, self._default_threshold)
+        return value >= threshold
+
+    def get_threshold(self, action_type: str) -> float:
+        """
+        Récupère le seuil pour un type d'action donné.
+        
+        Args:
+            action_type (str): Le type d'action
+            
+        Returns:
+            float: Le seuil pour ce type d'action
+        """
+        return self._threshold_config.get(action_type, self._default_threshold)
+
+    def run(self, prompt: str) -> Dict[str, Any]:
+        """
+        Méthode principale pour exécuter l'agent.
+        
+        Args:
+            prompt (str): Le message contenant la valeur et le type d'action
+            
+        Returns:
+            Dict[str, Any]: Résultat de la vérification du seuil
+        """
+        try:
+            # Analyse du prompt pour extraire la valeur et le type d'action
+            parts = prompt.split("|")
+            if len(parts) != 2:
+                raise ValueError("Format invalide. Attendu: 'valeur|action_type'")
+                
+            value = float(parts[0].strip())
+            action_type = parts[1].strip()
+            
+            # Vérification du seuil
+            threshold = self.get_threshold(action_type)
+            is_above = self.check_threshold(value, action_type)
+            
+            return {
+                "success": True,
+                "value": value,
+                "action_type": action_type,
+                "threshold": threshold,
+                "is_above_threshold": is_above
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "value": 0.0,
+                "action_type": "unknown",
+                "threshold": self._default_threshold,
+                "is_above_threshold": False
+            }
 
     def check_slots(
         self,
@@ -80,4 +148,68 @@ class ThresholdAgent(BaseAgent):
         if len(descriptions) == 1:
             return f"J'ai besoin de connaître {descriptions[0]}."
         else:
-            return f"J'ai besoin de connaître {', '.join(descriptions[:-1])} et {descriptions[-1]}." 
+            return f"J'ai besoin de connaître {', '.join(descriptions[:-1])} et {descriptions[-1]}."
+
+    def check_thresholds(
+        self,
+        intent: Dict[str, Any],
+        emotion: Dict[str, Any],
+        search_results: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Vérifie les seuils pour l'intent, l'émotion et les résultats de recherche.
+        
+        Args:
+            intent (Dict[str, Any]): Résultat de la détection d'intention
+            emotion (Dict[str, Any]): Résultat de la détection d'émotion
+            search_results (Dict[str, Any]): Résultats de la recherche
+            
+        Returns:
+            Dict[str, Any]: Résultat de la vérification des seuils
+        """
+        try:
+            # Vérifier la confiance de l'intent
+            intent_confidence = intent.get("confidence", 0.0)
+            intent_above = self.check_threshold(intent_confidence, "intent")
+            
+            # Vérifier la confiance de l'émotion
+            emotion_confidence = emotion.get("confidence", 0.0)
+            emotion_above = self.check_threshold(emotion_confidence, "emotion")
+            
+            # Vérifier la qualité des résultats de recherche
+            search_quality = len(search_results.get("results", [])) / 3.0  # Normaliser sur 3 résultats
+            search_above = self.check_threshold(search_quality, "search")
+            
+            return {
+                "status": "success",
+                "thresholds": {
+                    "intent": {
+                        "value": intent_confidence,
+                        "threshold": self.get_threshold("intent"),
+                        "is_above": intent_above
+                    },
+                    "emotion": {
+                        "value": emotion_confidence,
+                        "threshold": self.get_threshold("emotion"),
+                        "is_above": emotion_above
+                    },
+                    "search": {
+                        "value": search_quality,
+                        "threshold": self.get_threshold("search"),
+                        "is_above": search_above
+                    }
+                },
+                "all_above_threshold": intent_above and emotion_above and search_above
+            }
+            
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "thresholds": {
+                    "intent": {"value": 0.0, "threshold": self._default_threshold, "is_above": False},
+                    "emotion": {"value": 0.0, "threshold": self._default_threshold, "is_above": False},
+                    "search": {"value": 0.0, "threshold": self._default_threshold, "is_above": False}
+                },
+                "all_above_threshold": False
+            } 

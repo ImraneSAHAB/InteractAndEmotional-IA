@@ -7,16 +7,21 @@ import json
 
 class IntentDetectionAgent(BaseAgent):
     """
-    Agent pour détecter l'intention et extraire les slots remplis ou manquants
+    Agent responsable de la détection des intentions et des slots dans les messages utilisateur.
     """
 
     VALID_INTENTS = ["restaurant_search", "activity_search", "hotel_booking", "salutation", "presentation", "remerciement", "confirmation", "negation", "information_generale", "demande_information"]
 
-    def __init__(self, name: str = "intent_slot_extractor"):
+    def __init__(self, name: str = "intent"):
         super().__init__(name)
         self._model_config = self._config["model"]
         self._api_key = self._model_config["api_key"]
         self._api_url = self._model_config["api_url"]
+        self._intent_config = self._config.get("intent", {})
+        self._valid_intents = [
+            "recherche", "information", "réservation", 
+            "annulation", "modification", "aide", "autre"
+        ]
         # Initialisation des slots par défaut
         self._current_slots = {
             "location": "",
@@ -24,6 +29,101 @@ class IntentDetectionAgent(BaseAgent):
             "budget": "",
             "time": "",
         }
+
+    def detect_intent(self, message: str) -> Dict[str, Any]:
+        """
+        Détecte l'intention et les slots dans le message utilisateur.
+        
+        Args:
+            message (str): Le message de l'utilisateur à analyser
+            
+        Returns:
+            Dict[str, Any]: Un dictionnaire contenant l'intention détectée et les slots
+        """
+        try:
+            # Analyse du message pour détecter l'intention
+            intent = self._analyze_intent(message)
+            
+            # Extraction des slots pertinents
+            slots = self._extract_slots(message, intent)
+            
+            return {
+                "intent": intent,
+                "slots": slots,
+                "confidence": 0.8  # Score de confiance par défaut
+            }
+            
+        except Exception as e:
+            # En cas d'erreur, retourner une intention par défaut
+            return {
+                "intent": "autre",
+                "slots": {},
+                "confidence": 0.0,
+                "error": str(e)
+            }
+
+    def _analyze_intent(self, message: str) -> str:
+        """
+        Analyse le message pour déterminer l'intention principale.
+        """
+        message = message.lower()
+        
+        # Mots-clés pour chaque intention
+        intent_keywords = {
+            "recherche": ["cherche", "trouve", "recherche", "où", "adresse", "localisation"],
+            "information": ["info", "information", "détails", "prix", "tarif", "horaires"],
+            "réservation": ["réserve", "réservation", "book", "booking", "disponibilité"],
+            "annulation": ["annule", "annulation", "annuler", "supprime", "suppression"],
+            "modification": ["modifie", "modification", "change", "changement"],
+            "aide": ["aide", "help", "comment", "comment faire", "explique"]
+        }
+        
+        # Vérifier les mots-clés pour chaque intention
+        for intent, keywords in intent_keywords.items():
+            if any(keyword in message for keyword in keywords):
+                return intent
+                
+        return "autre"
+
+    def _extract_slots(self, message: str, intent: str) -> Dict[str, Any]:
+        """
+        Extrait les slots pertinents en fonction de l'intention détectée.
+        """
+        slots = {}
+        message = message.lower()
+        
+        # Extraction des slots selon l'intention
+        if intent == "recherche":
+            # Extraction de la localisation
+            location_keywords = ["à", "dans", "sur", "près de", "autour de"]
+            for keyword in location_keywords:
+                if keyword in message:
+                    parts = message.split(keyword)
+                    if len(parts) > 1:
+                        slots["location"] = parts[1].strip()
+                        break
+                        
+        elif intent == "réservation":
+            # Extraction de la date
+            date_keywords = ["le", "pour le", "date", "jour"]
+            for keyword in date_keywords:
+                if keyword in message:
+                    parts = message.split(keyword)
+                    if len(parts) > 1:
+                        slots["date"] = parts[1].strip()
+                        break
+                        
+        elif intent == "information":
+            # Extraction du type d'information
+            info_keywords = ["sur", "concernant", "à propos de"]
+            for keyword in info_keywords:
+                if keyword in message:
+                    parts = message.split(keyword)
+                    if len(parts) > 1:
+                        slots["info_type"] = parts[1].strip()
+                        break
+                        
+        return slots
 
     def run(self, message: str) -> Dict[str, Any]:
         """
@@ -82,66 +182,6 @@ class IntentDetectionAgent(BaseAgent):
                     "date": ""
                 }
             }
-
-    def _extract_slots(self, message: str, intent: str) -> Dict[str, str]:
-        """
-        Extrait les slots pertinents du message en fonction de l'intention détectée.
-        Utilise le LLM pour extraire les informations de manière plus flexible.
-
-        Args:
-            message (str): Le message de l'utilisateur
-            intent (str): L'intention détectée
-
-        Returns:
-            Dict[str, str]: Dictionnaire des slots extraits
-        """
-        # Définir les slots requis pour chaque intention
-        required_slots = {
-            "restaurant_search": ["location", "food_type", "budget", "time"],
-            "activity_search": ["location", "activity_type", "date", "price_range"]
-        }
-
-        # Si l'intention n'a pas de slots requis, retourner un dictionnaire vide
-        if intent not in required_slots:
-            return {}
-
-        # Construire le prompt pour l'extraction des slots
-        slots_prompt = f"""
-        En tant qu'agent de détection d'intention, extrayez les informations pertinentes du message suivant.
-        Intention détectée : {intent}
-        Slots à extraire : {', '.join(required_slots[intent])}
-        
-        Message : {message}
-        
-        Pour chaque slot, extrayez la valeur si elle est présente dans le message.
-        Si une information n'est pas présente, laissez le champ vide.
-        
-        Format de réponse attendu (JSON) :
-        {{
-            "slot1": "valeur1",
-            "slot2": "valeur2",
-            ...
-        }}
-        """
-
-        try:
-            # Obtenir la réponse du LLM
-            response = self._get_llm_response([{"role": "user", "content": slots_prompt}])
-            
-            # Parser la réponse JSON
-            slots = json.loads(response)
-            
-            # S'assurer que tous les slots requis sont présents
-            for slot in required_slots[intent]:
-                if slot not in slots:
-                    slots[slot] = ""
-            
-            return slots
-            
-        except Exception as e:
-            print(f"Erreur lors de l'extraction des slots : {str(e)}")
-            # En cas d'erreur, retourner un dictionnaire avec des slots vides
-            return {slot: "" for slot in required_slots[intent]}
 
     def _build_prompt(self, message: str) -> List[Dict[str, str]]:
         """

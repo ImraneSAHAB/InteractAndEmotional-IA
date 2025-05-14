@@ -5,6 +5,7 @@ from .intent_detection_agent import IntentDetectionAgent
 from .threshold_agent import ThresholdAgent
 from .search_agent import SearchAgent
 from .response_generator_agent import ResponseGeneratorAgent
+from .TrackingAgent import TrackingAgent
 
 import requests
 import json
@@ -30,152 +31,164 @@ class AgentOrchestrator(BaseAgent):
         self._response_generator = ResponseGeneratorAgent()# A7: génère les réponses
         self._threshold_agent = ThresholdAgent()           # A8: vérifie les slots
         self._search_agent = SearchAgent()                 # A9: effectue les recherches web
+        self.tracking_agent = TrackingAgent()              # Agent de suivi
         
     def process_message(self, message: str) -> Dict[str, Any]:
         """
-        Traite un message utilisateur et retourne un dictionnaire complet.
-        Étapes :
-          1. Détection émotionnelle
-          2. Chargement de l'historique
-          3. Extraction d'intention et slots
-          4. Recherche d'informations en mémoire si besoin
-          5. Vérification des slots avec le ThresholdAgent
-          6. Décision de poser une question ou générer réponse finale
-          7. Enregistrement de l'interaction dans la mémoire
-          8. Retour du résultat
-
-        Args:
-            message (str): Le message de l'utilisateur.
-
-        Returns:
-            Dict[str, Any]: Résultat incluant success, response, context, emotions, slots, intent, found_information.
+        Traite un message utilisateur en orchestrant les différents agents.
         """
         try:
-            # 1. Détecter les émotions dans le message
-            emotions = self._emotion_agent.run(message)
-            current_emotion = emotions[0] if emotions else "neutre"
-
-            # 2. Récupérer l'historique des conversations
-            conversation_history = self._memory_agent.get_messages()
-
-            # 3. Détecter l'intention et extraire les slots
-            intent_result = self._intent_agent.run(message)
-            new_intent = intent_result["intent"]
-            new_slots = intent_result["slots"]
-            current_slots = self._memory_agent._current_slots.copy()
-            
-            # Définir les slots requis par intention
-            required_slots = {
-                "restaurant_search": ["location", "food_type", "budget", "time"],
-                "activity_search": ["location", "activity_type", "date"],
-                "hotel_search": ["location", "date", "budget"],
-                "information_generale": ["location"]
-            }
-
-            # Vérifier si nous avons une intention en cours
-            current_intent = next((intent for intent, slots in required_slots.items() 
-                                 if any(current_slots.get(slot) for slot in slots)), None)
-
-            # Si nous avons une intention en cours et que tous les slots ne sont pas remplis
-            if current_intent and not all(current_slots.get(slot) for slot in required_slots[current_intent]):
-                # Conserver l'intention en cours
-                intent = current_intent
-                # Mettre à jour uniquement les slots manquants
-                current_slots.update({k: v for k, v in new_slots.items() 
-                                   if v and v.strip() and not current_slots.get(k)})
-            else:
-                # Si aucune intention en cours ou tous les slots sont remplis, accepter la nouvelle intention
-                intent = new_intent
-                # Mettre à jour les slots en fonction de l'intention
-                if intent == "information_generale":
-                    # Pour les demandes d'information, extraire les informations du message
-                    current_slots = self._extract_info(message)
-                else:
-                    # Pour les autres intentions, mettre à jour tous les slots
-                    current_slots.update({k: v for k, v in new_slots.items() 
-                                       if v and v.strip()})
-
-            # Si l'utilisateur demande une info déjà connue, chercher en mémoire
-            found_information = None
-            if intent == "demande_information" and intent_result.get("search_query"):
-                search_result = self._memory_agent.search_in_conversations(
-                    intent_result["search_query"]
-                )
-                # Valider la confiance avant d'utiliser l'info
-                if search_result["found"] and search_result["confidence"] in ["high", "medium"]:
-                    found_information = search_result["information"]
-
-            # 6. Vérifier les slots avec le ThresholdAgent
-            threshold_result = self._threshold_agent.check_slots(
-                intent=intent,
-                filled_slots=current_slots,
-                required_slots=required_slots.get(intent, [])
+            # Log de l'étape de détection d'intention
+            self.tracking_agent.log_execution(
+                agent_name="intent_detection",
+                action="Détection de l'intention de l'utilisateur",
+                status="démarrage"
             )
-
-            # 7. Générer la réponse appropriée
-            if threshold_result["is_complete"]:
-                # Effectuer une recherche web pour obtenir des informations à jour
-                search_query = f"{'restaurant' if intent == 'restaurant_search' else 'hôtel' if intent == 'hotel_search' else 'activité'} {current_slots.get('food_type', '')} à {current_slots.get('location', '')} {current_slots.get('budget', '')} adresse horaires d'ouverture"
-                search_results = self._search_agent.search_web(search_query)
-                
-                # Générer la réponse finale avec les résultats de recherche
-                response = self._response_generator.generate_response(
-                    message=message,
-                    emotion=current_emotion,
-                    intent=intent,
-                    slots=current_slots,
-                    search_results=search_results
-                )
-            else:
-                # Vérifier tous les slots manquants
-                missing_slots = [slot for slot in required_slots.get(intent, []) 
-                               if not current_slots.get(slot)]
-                
-                # Générer la prochaine question
-                response = self._response_generator.generate_question(
-                    missing_slots=missing_slots,
-                    filled_slots=current_slots,
-                    message=message,
-                    emotion=current_emotion
-                )
-
-            # 8. Sauvegarder l'interaction et mettre à jour les slots
+            
+            # 1. Détection de l'intention
+            intent_result = self._intent_agent.run(message)
+            intent = {
+                "intent": intent_result["intent"],
+                "slots": intent_result["slots"],
+                "confidence": 0.8  # Valeur par défaut
+            }
+            
+            self.tracking_agent.log_execution(
+                agent_name="intent_detection",
+                action=f"Détection de l'intention: {intent['intent']}",
+                status="succès"
+            )
+            
+            # Log de l'étape de détection d'émotion
+            self.tracking_agent.log_execution(
+                agent_name="emotion_detection",
+                action="Analyse de l'état émotionnel",
+                status="démarrage"
+            )
+            
+            # 2. Détection de l'émotion
+            emotion = self._emotion_agent.detect_emotion(message)
+            
+            self.tracking_agent.log_execution(
+                agent_name="emotion_detection",
+                action=f"Détection de l'émotion: {emotion['emotion']}",
+                status="succès"
+            )
+            
+            # Log de l'étape de recherche
+            self.tracking_agent.log_execution(
+                agent_name="search",
+                action="Recherche d'informations pertinentes",
+                status="démarrage"
+            )
+            
+            # 3. Recherche d'informations
+            search_results = self._search_agent.search(message)
+            
+            self.tracking_agent.log_execution(
+                agent_name="search",
+                action=f"Recherche terminée: {len(search_results)} résultats",
+                status="succès"
+            )
+            
+            # Log de l'étape de seuil
+            self.tracking_agent.log_execution(
+                agent_name="threshold",
+                action="Vérification des seuils de confiance",
+                status="démarrage"
+            )
+            
+            # 4. Vérification des seuils
+            threshold_check = self._threshold_agent.check_thresholds(
+                intent=intent,
+                emotion=emotion,
+                search_results={"results": search_results}  # Encapsuler la liste dans un dict pour la compatibilité
+            )
+            
+            self.tracking_agent.log_execution(
+                agent_name="threshold",
+                action=f"Vérification des seuils: {threshold_check['status']}",
+                status="succès"
+            )
+            
+            # Log de l'étape de mémoire
+            self.tracking_agent.log_execution(
+                agent_name="memory",
+                action="Mise à jour de la mémoire contextuelle",
+                status="démarrage"
+            )
+            
+            # 5. Mise à jour de la mémoire
             self._memory_agent.add_message(
                 role="user",
                 content=message,
-                emotion=current_emotion,
-                slots=current_slots,
-                intent=intent
+                emotion=emotion["emotion"],
+                slots=intent["slots"],
+                intent=intent["intent"]
             )
+            
+            memory_update = {
+                "slots": intent["slots"],
+                "emotion": emotion["emotion"],
+                "intent": intent["intent"]
+            }
+            
+            self.tracking_agent.log_execution(
+                agent_name="memory",
+                action="Mise à jour de la mémoire terminée",
+                status="succès"
+            )
+            
+            # Log de l'étape de génération de réponse
+            self.tracking_agent.log_execution(
+                agent_name="response_generator",
+                action="Génération de la réponse finale",
+                status="démarrage"
+            )
+            
+            # 6. Génération de la réponse
+            response = self._response_generator.generate_response(
+                message=message,
+                emotion=emotion["emotion"],
+                intent=intent["intent"],
+                slots=intent["slots"],
+                search_results=search_results
+            )
+            
+            # Ajouter la réponse à la mémoire
             self._memory_agent.add_message(
                 role="assistant",
                 content=response,
-                emotion="",  # Pas d'émotion pour l'assistant
-                slots=current_slots,
-                intent=intent
+                emotion=emotion["emotion"],
+                intent=intent["intent"]
             )
             
-            # Mettre à jour les slots dans la mémoire
-            self._memory_agent._current_slots = current_slots.copy()
-
-            # 9. Retourner le résultat structuré
+            self.tracking_agent.log_execution(
+                agent_name="response_generator",
+                action="Réponse générée avec succès",
+                status="succès"
+            )
+            
+            # Log de l'étape finale
+            self.tracking_agent.log_execution(
+                agent_name="orchestrator",
+                action="Traitement complet de la demande",
+                status="succès"
+            )
+            
             return {
-                "success": True,
                 "response": response,
-                "context": conversation_history,
-                "emotions": emotions,
-                "slots": current_slots,
-                "intent": intent,
-                "found_information": found_information
+                "success": True
             }
-
-        except Exception:
-            # En cas d'erreur, retourner success=False avec le message
-            return {
-                "success": False,
-                "error": "Une erreur est survenue",
-                "response": "Désolé, une erreur est survenue lors du traitement de votre message."
-            }
+            
+        except Exception as e:
+            # Log de l'erreur
+            self.tracking_agent.log_execution(
+                agent_name="orchestrator",
+                action="Erreur lors du traitement",
+                status=f"erreur: {str(e)}"
+            )
+            raise
 
     def generate_response(self, slots: Dict[str, Any], intent: str) -> str:
         """

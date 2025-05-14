@@ -12,11 +12,26 @@ class SearchAgent(BaseAgent):
     Hérite de la classe de base Agent pour charger nom, rôle, goal et backstory depuis config.json.
     """
 
-    def __init__(self, name: str = "searcher"):
+    def __init__(self, name: str = "search"):
         super().__init__(name)
         self._search_config = self._config.get("search", {})
 
+    def search(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Effectue une recherche web et retourne les résultats.
+        
+        Args:
+            query (str): La requête de recherche
+            
+        Returns:
+            List[Dict[str, Any]]: Liste des résultats de recherche
+        """
+        return self.search_web(query)
+
     def search_web(self, query: str) -> List[Dict[str, Any]]:
+        """
+        Méthode interne pour effectuer la recherche web.
+        """
         try:
             if not self._search_config.get("api_key") or not self._search_config.get("url"):
                 return self._get_fallback_results(query)
@@ -51,6 +66,23 @@ class SearchAgent(BaseAgent):
 
         except Exception:
             return self._get_fallback_results(query)
+
+    def run(self, prompt: str) -> Dict[str, Any]:
+        """
+        Méthode principale pour exécuter l'agent.
+        
+        Args:
+            prompt (str): La requête de recherche
+            
+        Returns:
+            Dict[str, Any]: Résultats de la recherche
+        """
+        results = self.search(prompt)
+        return {
+            "success": True,
+            "results": results,
+            "query": prompt
+        }
 
     def _is_valid_result(self, result: Dict[str, Any]) -> bool:
         """

@@ -18,58 +18,52 @@
     },
     "agents": {
         "coordinator": {
-            "name": "Coordinateur",
-            "role": "Coordinateur",
-            "goal": "Gérer la communication entre les agents et coordonner leurs actions",
-            "backstory": "Expert en gestion de projet et coordination d'équipe, capable d'optimiser le flux de travail entre les agents"
+            "name": "Agent Coordinateur",
+            "role": "Orchestrateur principal",
+            "goal": "Coordonner les interactions entre les agents",
+            "backstory": "Expert en coordination d'agents IA"
         },
         "memory": {
-            "name": "Mémoire",
-            "role": "Gestionnaire de Mémoire",
-            "goal": "Maintenir et gérer l'historique des conversations entre l'utilisateur et le système",
-            "backstory": "Expert en gestion de données conversationnelles, capable de stocker et d'organiser efficacement l'historique des échanges"
+            "name": "Agent Mémoire",
+            "role": "Gestionnaire de mémoire",
+            "goal": "Maintenir le contexte de la conversation",
+            "backstory": "Spécialiste en gestion de mémoire contextuelle"
         },
-        "interactional": {
-            "name": "Communication",
-            "role": "Assistant de communication",
-            "goal": "Gérer les interactions avec l'utilisateur de manière naturelle et efficace",
-            "backstory": "Expert en communication, capable de maintenir des conversations fluides et pertinentes avec l'utilisateur"
+        "emotion": {
+            "name": "Agent Émotion",
+            "role": "Détecteur d'émotions",
+            "goal": "Détecter et analyser les émotions",
+            "backstory": "Expert en analyse émotionnelle"
         },
-        "emotion_detector": {
-            "name": "Détecteur d'émotions",
-            "role": "Analyste émotionnel",
-            "goal": "Détecter et analyser les émotions dans les messages des utilisateurs",
-            "backstory": "Spécialiste en analyse émotionnelle, capable d'identifier les nuances émotionnelles dans le langage"
+        "intent": {
+            "name": "Agent Intention",
+            "role": "Détecteur d'intentions",
+            "goal": "Détecter les intentions utilisateur",
+            "backstory": "Spécialiste en compréhension des intentions"
         },
-        "response_generator": {
-            "name": "Générateur de réponses",
-            "role": "Générateur de réponses contextuelles",
-            "goal": "Composer des réponses contextuelles et générer des questions naturelles pour collecter des informations manquantes",
-            "backstory": "Expert en génération de texte, capable de créer des réponses pertinentes et des questions naturelles adaptées au contexte et aux émotions de l'utilisateur"
-        },
-        "intent_slot_extractor": {
-            "name": "Détecteur d'intention",
-            "role": "Analyste d'intention",
-            "goal": "Identifier l'intention de l'utilisateur et extraire les entités pertinentes",
-            "backstory": "Spécialiste du traitement du langage naturel, capable d'identifier ce que l'utilisateur souhaite réellement faire ou demander, en extrayant les intentions et les entités clés"
-        },
-        "dialogue_planner": {
-            "name": "Planificateur de dialogue",
-            "role": "Orienteur de la conversation",
-            "goal": "Choisir la prochaine question à poser à l'utilisateur en fonction des slots manquants",
-            "backstory": "Expert en planification conversationnelle, capable de guider intelligemment l'échange pour collecter toutes les informations nécessaires à une réponse complète"
-        },
-        "searcher": {
-          "name": "Chercheur Web",
-          "role": "Chercheur Web",
-          "goal": "Effectuer des recherches web pertinentes et extraire les informations",
-          "backstory": "Expert en recherche web et en extraction d'informations"
+        "response": {
+            "name": "Agent Réponse",
+            "role": "Générateur de réponses",
+            "goal": "Générer des réponses pertinentes",
+            "backstory": "Expert en génération de réponses naturelles"
         },
         "threshold": {
-            "name": "Vérificateur",
-            "role": "Vérificateur de complétude",
-            "goal": "Vérifier si toutes les informations nécessaires sont disponibles avant de générer une réponse finale",
-            "backstory": "Expert en validation de données, capable de s'assurer que toutes les informations requises sont présentes avant de procéder"
+            "name": "Agent Seuil",
+            "role": "Vérificateur de seuils",
+            "goal": "Vérifier les seuils de confiance",
+            "backstory": "Spécialiste en validation de données"
+        },
+        "search": {
+            "name": "Agent Recherche",
+            "role": "Agent de recherche",
+            "goal": "Rechercher des informations pertinentes",
+            "backstory": "Expert en recherche d'informations"
+        },
+        "tracking": {
+            "name": "Agent de Suivi",
+            "role": "Suivi des interactions",
+            "goal": "Suivre et analyser les interactions entre agents",
+            "backstory": "Expert en analyse de systèmes d'agents"
         }
     }
 } 

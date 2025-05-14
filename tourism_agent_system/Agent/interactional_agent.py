@@ -7,49 +7,100 @@ import time
 
 class InteractionalAgent(BaseAgent):
     """
-    Agent qui gère les interactions avec l'utilisateur
+    Agent responsable de la gestion des interactions avec l'utilisateur.
     """
-    
-    def __init__(self, orchestrator: AgentOrchestrator = None, name: str = "interactional"):
+
+    def __init__(self, name: str = "interaction"):
         super().__init__(name)
-        self._orchestrator = orchestrator or AgentOrchestrator()
-        
-    def run(self) -> None:
+        self._interaction_config = self._config.get("interaction", {})
+        self._conversation_state = "initial"
+
+    def interact(self, message: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Lance la boucle principale d'interaction avec l'utilisateur.
-        """
-        print("\nBienvenue dans le système d'agent touristique !")
-        print("Tapez 'quit' pour quitter ou 'clear' pour effacer l'historique.")
-        print("-" * 50)
+        Gère l'interaction avec l'utilisateur.
         
-        while True:
-            try:
-                user_input = input("\nVous: ").strip()
-                
-                if not user_input or user_input.lower() == 'quit':
-                    print("\nAu revoir ! À bientôt !")
-                    break
-                elif user_input.lower() == 'clear':
-                    self.clear_memory()
-                    print("\nHistorique effacé.")
-                    continue
-                
-                # L'orchestrator gère tout le traitement
-                result = self._orchestrator.process_message(user_input)
-                
-                if result["success"]:
-                    # Afficher la réponse de l'assistant mot par mot
-                    print("\nAssistant: ", end="", flush=True)
-                    self._print_typing_effect(result['response'])
-                else:
-                    print(f"\nErreur: {result.get('error', 'Erreur inconnue')}")
-                    
-            except KeyboardInterrupt:
-                print("\nAu revoir ! À bientôt !")
-                break
-            except Exception as e:
-                print(f"\nErreur: {e}")
-    
+        Args:
+            message (str): Le message de l'utilisateur
+            context (Dict[str, Any], optional): Le contexte de la conversation
+            
+        Returns:
+            Dict[str, Any]: Résultat de l'interaction
+        """
+        try:
+            # Mise à jour du contexte
+            if context is None:
+                context = {}
+            
+            # Analyse du message pour déterminer l'état de la conversation
+            new_state = self._analyze_conversation_state(message, context)
+            self._conversation_state = new_state
+            
+            # Génération de la réponse appropriée
+            response = self._generate_response(message, new_state, context)
+            
+            return {
+                "success": True,
+                "state": new_state,
+                "response": response,
+                "context": context
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "state": self._conversation_state,
+                "response": "Désolé, je n'ai pas pu traiter votre message correctement.",
+                "context": context or {}
+            }
+
+    def _analyze_conversation_state(self, message: str, context: Dict[str, Any]) -> str:
+        """
+        Analyse le message pour déterminer l'état de la conversation.
+        """
+        message = message.lower()
+        
+        # États de conversation possibles
+        if "bonjour" in message or "salut" in message:
+            return "greeting"
+        elif "au revoir" in message or "bye" in message:
+            return "farewell"
+        elif "merci" in message:
+            return "thanks"
+        elif "?" in message:
+            return "question"
+        elif context.get("needs_clarification"):
+            return "clarification"
+        else:
+            return "conversation"
+
+    def _generate_response(self, message: str, state: str, context: Dict[str, Any]) -> str:
+        """
+        Génère une réponse appropriée en fonction de l'état de la conversation.
+        """
+        responses = {
+            "greeting": "Bonjour ! Comment puis-je vous aider aujourd'hui ?",
+            "farewell": "Au revoir ! N'hésitez pas à revenir si vous avez d'autres questions.",
+            "thanks": "Je vous en prie ! Y a-t-il autre chose que je puisse faire pour vous ?",
+            "question": "Je vais chercher cette information pour vous.",
+            "clarification": "Pourriez-vous préciser votre demande ?",
+            "conversation": "Je comprends. Comment puis-je vous aider davantage ?"
+        }
+        
+        return responses.get(state, "Je suis là pour vous aider.")
+
+    def run(self, prompt: str) -> Dict[str, Any]:
+        """
+        Méthode principale pour exécuter l'agent.
+        
+        Args:
+            prompt (str): Le message de l'utilisateur
+            
+        Returns:
+            Dict[str, Any]: Résultat de l'interaction
+        """
+        return self.interact(prompt)
+
     def _print_typing_effect(self, text: str, delay: float = 0.03) -> None:
         """
         Affiche le texte mot par mot avec un effet de frappe.

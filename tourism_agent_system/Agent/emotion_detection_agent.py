@@ -7,13 +7,14 @@ import re
 
 class EmotionDetectionAgent(BaseAgent):
     """
-    Agent qui détecte les émotions dans les messages
+    Agent spécialisé dans la détection des émotions dans les messages.
+    Utilise Mistral pour analyser le sentiment et l'émotion.
     """
     
     # Liste des émotions valides
     VALID_EMOTIONS = ["joie", "tristesse", "colère", "peur", "surprise", "dégoût", "neutre"]
     
-    def __init__(self, name: str = "emotion_detector"):
+    def __init__(self, name: str = "emotion"):
         super().__init__(name)
         self._model_config = self._config["model"]
         self._api_key = self._model_config["api_key"]
@@ -21,25 +22,97 @@ class EmotionDetectionAgent(BaseAgent):
         
     def run(self, message: str) -> List[str]:
         """
-        Détecte les émotions dans un message.
+        Implémentation de la méthode run de BaseAgent.
+        Retourne une liste d'émotions détectées.
+        """
+        result = self.detect_emotion(message)
+        return [result["emotion"]]
+
+    def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
+        """
+        Obtient une réponse de l'API Mistral.
+        
+        Args:
+            prompt (List[Dict[str, str]]): Le prompt à envoyer au LLM
+            
+        Returns:
+            str: La réponse du LLM
+        """
+        try:
+            headers = {
+                "Authorization": f"Bearer {self._api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            data = {
+                "model": "mistral-tiny",
+                "messages": prompt,
+                "temperature": self._model_config["temperature"],
+                "max_tokens": self._model_config["max_tokens"]
+            }
+            
+            response = requests.post(
+                f"{self._api_url}/chat/completions",
+                headers=headers,
+                json=data
+            )
+            
+            if response.status_code == 200:
+                return response.json()["choices"][0]["message"]["content"]
+            elif response.status_code == 429:  # Rate limit
+                return "neutre"  # Retourner une émotion neutre en cas de rate limit
+            else:
+                raise Exception(f"Erreur API Mistral: {response.status_code}")
+                
+        except Exception as e:
+            print(f"Erreur lors de l'appel à l'API Mistral: {e}")
+            return "neutre"  # Retourner une émotion neutre en cas d'erreur
+
+    def detect_emotion(self, message: str) -> Dict[str, str]:
+        """
+        Détecte l'émotion principale dans un message.
         
         Args:
             message (str): Le message à analyser
             
         Returns:
-            List[str]: Liste des émotions détectées
+            Dict[str, str]: Dictionnaire contenant l'émotion détectée
         """
         try:
-            prompt = self._build_prompt(message)
-            response = self._get_llm_response(prompt)
-            emotions = self._parse_emotions(response)
+            prompt = [
+                {"role": "system", "content": """Tu es un expert en analyse émotionnelle.
+                Analyse le message et détermine l'émotion principale parmi :
+                - joie
+                - tristesse
+                - colère
+                - peur
+                - surprise
+                - dégoût
+                - neutre
+                
+                Réponds UNIQUEMENT avec l'émotion, sans autre texte."""},
+                {"role": "user", "content": message}
+            ]
             
-            return emotions if emotions else ["neutre"]
+            emotion = self._get_llm_response(prompt).strip().lower()
+            
+            # Validation de l'émotion
+            valid_emotions = ["joie", "tristesse", "colère", "peur", "surprise", "dégoût", "neutre"]
+            if emotion not in valid_emotions:
+                emotion = "neutre"
+            
+            return {
+                "emotion": emotion,
+                "confidence": "high" if emotion != "neutre" else "medium"
+            }
             
         except Exception as e:
             print(f"Erreur lors de la détection d'émotion: {e}")
-            return ["neutre"]
-            
+            return {
+                "emotion": "neutre",
+                "confidence": "low"
+            }
+
     def _build_prompt(self, message: str) -> List[Dict[str, str]]:
         """
         Construit le prompt pour la détection d'émotion.
@@ -78,44 +151,6 @@ class EmotionDetectionAgent(BaseAgent):
             {"role": "system", "content": system_message},
             {"role": "user", "content": f"Message à analyser : {message}"}
         ]
-        
-    def _get_llm_response(self, prompt: List[Dict[str, str]]) -> str:
-        """
-        Obtient une réponse de l'API Mistral.
-        
-        Args:
-            prompt (List[Dict[str, str]]): Le prompt à envoyer au LLM
-            
-        Returns:
-            str: La réponse du LLM
-        """
-        try:
-            headers = {
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json"
-            }
-            
-            data = {
-                "model": "mistral-tiny",
-                "messages": prompt,
-                "temperature": self._model_config["temperature"],
-                "max_tokens": self._model_config["max_tokens"]
-            }
-            
-            response = requests.post(
-                f"{self._api_url}/chat/completions",
-                headers=headers,
-                json=data
-            )
-            
-            if response.status_code == 200:
-                return response.json()["choices"][0]["message"]["content"]
-            else:
-                raise Exception(f"Erreur API Mistral: {response.status_code}")
-                
-        except Exception as e:
-            print(f"Erreur lors de l'appel à l'API Mistral: {e}")
-            raise
         
     def _parse_emotions(self, response: str) -> List[str]:
         """
